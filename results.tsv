@@ -9,3 +9,5 @@ d9a81d9	2760.4	10	keep	aggressive LMP tuning + tighter futility/razor margins (+
 ea4c1a5	2539.9	10	discard	LMR 2.25->2.10 + EPD book + SEE 80->95 (regressed -220, LMR too aggressive)
 dbe6923	2369.5	10	discard	null move reduction 3+depth/4 (regressed -391, way too aggressive)
 9865f67	2800.0	10	keep	extend LMP to depth 7-8 (50/65) + tighten depth 1 (5->4). PERFECT 10-0!
+2e9e631	2625.5	10	discard	LMP d9-10 (85/110) + EPD book (regressed -175, over-extended or variance)
+dc291ee	2760.4	10	keep	VERIFICATION: same code, no changes. 9W/1D/0L confirms ~2780 true strength

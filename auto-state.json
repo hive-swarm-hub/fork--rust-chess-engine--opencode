@@ -2,13 +2,13 @@
   "status": "running",
   "task": "rust-chess-engine",
   "workdir": "/home/tianhao/rust-chess-engine",
-  "iteration": 10,
+  "iteration": 12,
   "phase": "submit",
   "best_elo": 2800.0,
-  "current_plan": "Two-pronged approach: (1) Extend LMP to depths 7 and 8 with limits 50 and 65 respectively, to prune more moves at medium depths. (2) Tighten LMP at depth 1 from 5 to 4, since with good move ordering the first 4 moves cover 95%+ of best moves at depth 1. These are safe 'prune more moves' changes that follow the proven strategy from experiment #7. No changes to reduction amounts, no changes to LMR/null move formulas.",
-  "last_elo": 2800.0,
+  "current_plan": "Re-run the current best code (LMP d1=4 through d8=65) without any changes to verify the 2800.0 result is reproducible and not just a lucky 10-0 sweep. If it scores 2800 again, we have high confidence the LMP tuning genuinely improved the engine. If it scores lower (e.g. 2625-2760), then the 2800 was variance and the true strength is ~2700. This verification run takes no risk and provides critical information about whether to keep iterating or stop.",
+  "last_elo": 2760.4,
   "last_valid": true,
   "last_crashed": false,
-  "outcome": "keep",
-  "iterations_done": 9
+  "outcome": "discard",
+  "iterations_done": 11
 }

@@ -22,9 +22,7 @@ fn main() {
             Err(_) => break,
         };
         let tokens: Vec<&str> = line.split_whitespace().collect();
-        if tokens.is_empty() {
-            continue;
-        }
+        if tokens.is_empty() { continue; }
 
         match tokens[0] {
             "uci" => {
@@ -77,57 +75,15 @@ fn main() {
                 let mut i = 1;
                 while i < tokens.len() {
                     match tokens[i] {
-                        "wtime" => {
-                            if let Some(t) = tokens.get(i + 1).and_then(|t| t.parse().ok()) {
-                                if side == Color::White {
-                                    time_ms = t;
-                                }
-                            }
-                            i += 2;
-                        }
-                        "btime" => {
-                            if let Some(t) = tokens.get(i + 1).and_then(|t| t.parse().ok()) {
-                                if side == Color::Black {
-                                    time_ms = t;
-                                }
-                            }
-                            i += 2;
-                        }
-                        "winc" => {
-                            if let Some(t) = tokens.get(i + 1).and_then(|t| t.parse().ok()) {
-                                if side == Color::White {
-                                    inc_ms = t;
-                                }
-                            }
-                            i += 2;
-                        }
-                        "binc" => {
-                            if let Some(t) = tokens.get(i + 1).and_then(|t| t.parse().ok()) {
-                                if side == Color::Black {
-                                    inc_ms = t;
-                                }
-                            }
-                            i += 2;
-                        }
-                        "movestogo" => {
-                            movestogo = tokens.get(i + 1).and_then(|t| t.parse().ok()).unwrap_or(0);
-                            i += 2;
-                        }
-                        "depth" => {
-                            max_depth = tokens.get(i + 1).and_then(|t| t.parse().ok());
-                            i += 2;
-                        }
-                        "movetime" => {
-                            movetime = tokens.get(i + 1).and_then(|t| t.parse().ok());
-                            i += 2;
-                        }
-                        "infinite" => {
-                            time_ms = 999_999_999;
-                            i += 1;
-                        }
-                        _ => {
-                            i += 1;
-                        }
+                        "wtime" => { if let Some(t) = tokens.get(i+1).and_then(|t| t.parse().ok()) { if side == Color::White { time_ms = t; } } i += 2; }
+                        "btime" => { if let Some(t) = tokens.get(i+1).and_then(|t| t.parse().ok()) { if side == Color::Black { time_ms = t; } } i += 2; }
+                        "winc"  => { if let Some(t) = tokens.get(i+1).and_then(|t| t.parse().ok()) { if side == Color::White { inc_ms = t; } } i += 2; }
+                        "binc"  => { if let Some(t) = tokens.get(i+1).and_then(|t| t.parse().ok()) { if side == Color::Black { inc_ms = t; } } i += 2; }
+                        "movestogo" => { movestogo = tokens.get(i+1).and_then(|t| t.parse().ok()).unwrap_or(0); i += 2; }
+                        "depth" => { max_depth = tokens.get(i+1).and_then(|t| t.parse().ok()); i += 2; }
+                        "movetime" => { movetime = tokens.get(i+1).and_then(|t| t.parse().ok()); i += 2; }
+                        "infinite" => { time_ms = 999_999_999; i += 1; }
+                        _ => { i += 1; }
                     }
                 }
 
@@ -145,18 +101,11 @@ fn main() {
                     with_inc.min(time_ms / 3).max(100)
                 };
 
-                let history = if move_history.is_empty() {
-                    None
-                } else {
-                    Some(move_history.clone())
-                };
+                let history = if move_history.is_empty() { None } else { Some(move_history.clone()) };
                 match engine.choose_move(&root_fen, max_depth, Some(alloc_ms), history) {
                     Ok(res) => {
                         let pv = res.pv_uci.join(" ");
-                        send(&format!(
-                            "info depth {} score cp {} nodes {} pv {}",
-                            res.depth, res.score, res.nodes, pv
-                        ));
+                        send(&format!("info depth {} score cp {} nodes {} pv {}", res.depth, res.score, res.nodes, pv));
                         send(&format!("bestmove {}", res.move_uci));
                     }
                     Err(_) => {
@@ -184,8 +133,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use chess::{
-    get_bishop_moves, get_king_moves, get_knight_moves, get_pawn_attacks, get_rook_moves, BitBoard,
-    Board, BoardStatus, ChessMove, Color, File, MoveGen, Piece, Rank, Square,
+    get_bishop_moves, get_king_moves, get_knight_moves, get_pawn_attacks, get_rook_moves,
+    BitBoard, Board, BoardStatus, ChessMove, Color, File, MoveGen, Piece, Rank, Square,
 };
 
 const INFINITY: i32 = 1_000_000;
@@ -248,9 +197,9 @@ const THREAT_QUEEN_BY_ROOK: i32 = 25;
 const PASSED_PAWN_BONUS: [i32; 8] = [0, 8, 12, 20, 35, 60, 90, 0];
 const ENDGAME_PASSED_PAWN_BONUS: [i32; 8] = [0, 0, 4, 8, 16, 32, 56, 0];
 const SUPPORTED_PASSED_PAWN_BONUS: [i32; 8] = [0, 0, 3, 6, 12, 20, 32, 0];
-const REVERSE_FUTILITY_MARGIN: [i32; 5] = [0, 85, 150, 235, 320];
-const FUTILITY_MARGIN: [i32; 5] = [0, 100, 170, 260, 350];
-const RAZOR_MARGIN: [i32; 4] = [0, 250, 380, 520];
+const REVERSE_FUTILITY_MARGIN: [i32; 5] = [0, 75, 140, 225, 310];
+const FUTILITY_MARGIN: [i32; 5] = [0, 90, 155, 245, 340];
+const RAZOR_MARGIN: [i32; 4] = [0, 230, 360, 500];
 
 // Contempt: slight penalty for draws when we likely have advantage
 const CONTEMPT: i32 = 12;
@@ -263,13 +212,9 @@ fn build_opening_book() -> HashMap<u64, &'static str> {
     // Each line is a sequence of moves; we record each intermediate position hash -> next move
     let lines: &[&[&str]] = &[
         // Italian Game / Giuoco Piano
-        &[
-            "e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "f8c5", "c2c3", "g8f6", "d2d4",
-        ],
+        &["e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "f8c5", "c2c3", "g8f6", "d2d4"],
         // Ruy Lopez main line
-        &[
-            "e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "a7a6", "b5a4", "g8f6", "e1g1",
-        ],
+        &["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "a7a6", "b5a4", "g8f6", "e1g1"],
         // Scotch Game
         &["e2e4", "e7e5", "g1f3", "b8c6", "d2d4", "e5d4", "f3d4"],
         // Queen's Gambit
@@ -279,17 +224,13 @@ fn build_opening_book() -> HashMap<u64, &'static str> {
         // Sicilian Defense (Open)
         &["e2e4", "c7c5", "g1f3", "d7d6", "d2d4", "c5d4", "f3d4"],
         // Sicilian Najdorf
-        &[
-            "e2e4", "c7c5", "g1f3", "d7d6", "d2d4", "c5d4", "f3d4", "g8f6", "b1c3", "a7a6", "c1e3",
-        ],
+        &["e2e4", "c7c5", "g1f3", "d7d6", "d2d4", "c5d4", "f3d4", "g8f6", "b1c3", "a7a6", "c1e3"],
         // French Defense
         &["e2e4", "e7e6", "d2d4", "d7d5", "b1c3", "g8f6", "c1g5"],
         // Caro-Kann
         &["e2e4", "c7c6", "d2d4", "d7d5", "b1c3", "d5e4", "c3e4"],
         // King's Indian
-        &[
-            "d2d4", "g8f6", "c2c4", "g7g6", "b1c3", "f8g7", "e2e4", "d7d6", "g1f3",
-        ],
+        &["d2d4", "g8f6", "c2c4", "g7g6", "b1c3", "f8g7", "e2e4", "d7d6", "g1f3"],
         // Nimzo-Indian
         &["d2d4", "g8f6", "c2c4", "e7e6", "b1c3", "f8b4", "e2e3"],
         // English Opening
@@ -303,13 +244,9 @@ fn build_opening_book() -> HashMap<u64, &'static str> {
         // Scandinavian
         &["e2e4", "d7d5", "e4d5", "d8d5", "b1c3", "d5a5", "d2d4"],
         // Slav Defense
-        &[
-            "d2d4", "d7d5", "c2c4", "c7c6", "g1f3", "g8f6", "b1c3", "d5c4", "a2a4",
-        ],
+        &["d2d4", "d7d5", "c2c4", "c7c6", "g1f3", "g8f6", "b1c3", "d5c4", "a2a4"],
         // Grunfeld
-        &[
-            "d2d4", "g8f6", "c2c4", "g7g6", "b1c3", "d7d5", "c4d5", "f6d5", "e2e4",
-        ],
+        &["d2d4", "g8f6", "c2c4", "g7g6", "b1c3", "d7d5", "c4d5", "f6d5", "e2e4"],
         // Default opening moves
         &["e2e4"],
         &["e2e4", "e7e5", "g1f3"],
@@ -383,9 +320,9 @@ const KING_ENDGAME_TABLE: [i32; 64] = [
 
 // Endgame piece-square tables (for proper tapered eval)
 const PAWN_EG_TABLE: [i32; 64] = [
-    0, 0, 0, 0, 0, 0, 0, 0, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 20, 20,
-    20, 20, 20, 20, 20, 20, 30, 30, 30, 30, 30, 30, 30, 30, 50, 50, 50, 50, 50, 50, 50, 50, 80, 80,
-    80, 80, 80, 80, 80, 80, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,
+    20, 20, 20, 20, 20, 20, 20, 20, 30, 30, 30, 30, 30, 30, 30, 30, 50, 50, 50, 50, 50, 50, 50, 50,
+    80, 80, 80, 80, 80, 80, 80, 80, 0, 0, 0, 0, 0, 0, 0, 0,
 ];
 
 const KNIGHT_EG_TABLE: [i32; 64] = [
@@ -401,14 +338,15 @@ const BISHOP_EG_TABLE: [i32; 64] = [
 ];
 
 const ROOK_EG_TABLE: [i32; 64] = [
-    0, 0, 0, 0, 0, 0, 0, 0, 5, 5, 5, 5, 5, 5, 5, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 5, 5, 5, 5, 5, 5, 5, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0,
 ];
 
 const QUEEN_EG_TABLE: [i32; 64] = [
-    -10, -5, -5, -5, -5, -5, -5, -10, -5, 0, 0, 0, 0, 0, 0, -5, -5, 0, 5, 5, 5, 5, 0, -5, -5, 0, 5,
-    10, 10, 5, 0, -5, -5, 0, 5, 10, 10, 5, 0, -5, -5, 0, 5, 5, 5, 5, 0, -5, -5, 0, 0, 0, 0, 0, 0,
-    -5, -10, -5, -5, -5, -5, -5, -5, -10,
+    -10, -5, -5, -5, -5, -5, -5, -10, -5, 0, 0, 0, 0, 0, 0, -5, -5, 0, 5, 5, 5, 5, 0, -5,
+    -5, 0, 5, 10, 10, 5, 0, -5, -5, 0, 5, 10, 10, 5, 0, -5, -5, 0, 5, 5, 5, 5, 0, -5,
+    -5, 0, 0, 0, 0, 0, 0, -5, -10, -5, -5, -5, -5, -5, -5, -10,
 ];
 
 // Precomputed LMR reduction table
@@ -425,19 +363,13 @@ static LMR_TABLE: [[i32; 64]; 64] = {
             let log2_d = {
                 let mut v = d;
                 let mut r = 0.0;
-                while v >= 2.0 {
-                    v /= 2.0;
-                    r += 1.0;
-                }
+                while v >= 2.0 { v /= 2.0; r += 1.0; }
                 r + (v - 1.0) * 0.5 // rough ln via log2
             };
             let log2_m = {
                 let mut v = m;
                 let mut r = 0.0;
-                while v >= 2.0 {
-                    v /= 2.0;
-                    r += 1.0;
-                }
+                while v >= 2.0 { v /= 2.0; r += 1.0; }
                 r + (v - 1.0) * 0.5
             };
             let ln_d = log2_d * ln2;
@@ -462,13 +394,7 @@ struct TTEntry {
 
 impl Default for TTEntry {
     fn default() -> Self {
-        Self {
-            key: 0,
-            depth: 0,
-            score: 0,
-            flag: 0,
-            best_move: None,
-        }
+        Self { key: 0, depth: 0, score: 0, flag: 0, best_move: None }
     }
 }
 
@@ -501,14 +427,10 @@ impl Default for PawnCacheEntry {
     fn default() -> Self {
         Self {
             key: 0,
-            white_structure_mg: 0,
-            black_structure_mg: 0,
-            white_structure_eg: 0,
-            black_structure_eg: 0,
-            white_center_mg: 0,
-            black_center_mg: 0,
-            white_files: [0; 8],
-            black_files: [0; 8],
+            white_structure_mg: 0, black_structure_mg: 0,
+            white_structure_eg: 0, black_structure_eg: 0,
+            white_center_mg: 0, black_center_mg: 0,
+            white_files: [0; 8], black_files: [0; 8],
         }
     }
 }
@@ -536,9 +458,7 @@ impl RepetitionTracker {
         for &h in &self.hashes {
             if h == hash {
                 c += 1;
-                if c >= 3 {
-                    return c;
-                }
+                if c >= 3 { return c; }
             }
         }
         c
@@ -576,9 +496,9 @@ struct RustAlphaBetaEngine {
     killer_moves: Vec<[Option<ChessMove>; 2]>,
     history_heuristic: Vec<i32>,
     capture_history: Vec<i16>,
-    countermove: Vec<Option<ChessMove>>, // indexed by previous move's move_key
+    countermove: Vec<Option<ChessMove>>,  // indexed by previous move's move_key
     move_stack: Vec<Option<ChessMove>>,  // move played at each ply for countermove tracking
-    eval_stack: Vec<i32>,                // static eval at each ply for improving detection
+    eval_stack: Vec<i32>,  // static eval at each ply for improving detection
     eval_cache: Vec<EvalCacheEntry>,
     pawn_cache: Vec<PawnCacheEntry>,
     deadline: Option<Instant>,
@@ -614,8 +534,9 @@ impl RustAlphaBetaEngine {
         movetime_ms: Option<u64>,
         moves_uci: Option<Vec<String>>,
     ) -> Result<RawSearchResult, String> {
-        let mut board = Board::from_str(fen)
-            .map_err(|error| format!("invalid FEN for Rust search backend: {error}"))?;
+        let mut board = Board::from_str(fen).map_err(|error| {
+            format!("invalid FEN for Rust search backend: {error}")
+        })?;
         let mut repetition = RepetitionTracker::new(board_hash(&board));
 
         if let Some(history) = moves_uci {
@@ -624,9 +545,7 @@ impl RustAlphaBetaEngine {
                     format!("invalid move history for Rust search backend: {error}")
                 })?;
                 if !move_is_legal(&board, chess_move) {
-                    return Err(format!(
-                        "illegal move history for Rust search backend: {move_uci}"
-                    ));
+                    return Err(format!("illegal move history for Rust search backend: {move_uci}"));
                 }
                 board = board.make_move_new(chess_move);
                 repetition.push(board_hash(&board));
@@ -721,7 +640,9 @@ impl RustAlphaBetaEngine {
 
         let chosen = best_move
             .or_else(|| MoveGen::new_legal(&board).next())
-            .ok_or_else(|| String::from("No legal moves available for an ongoing position."))?;
+            .ok_or_else(|| {
+                String::from("No legal moves available for an ongoing position.")
+            })?;
 
         Ok(RawSearchResult {
             move_uci: chosen.to_string(),
@@ -784,11 +705,7 @@ impl RustAlphaBetaEngine {
         let tt_idx = tt_key as usize & TT_MASK;
         let tt_move = {
             let entry = &self.tt[tt_idx];
-            if entry.key == tt_key {
-                entry.best_move
-            } else {
-                None
-            }
+            if entry.key == tt_key { entry.best_move } else { None }
         };
         let mut root_moves = self.scored_moves(board, tt_move, 0, false);
         if root_moves.is_empty() {
@@ -801,13 +718,8 @@ impl RustAlphaBetaEngine {
             let tt_idx2 = board_hash(board) as usize & TT_MASK;
             let best_move = {
                 let entry = &self.tt[tt_idx2];
-                if entry.key == board_hash(board) {
-                    entry.best_move
-                } else {
-                    None
-                }
-            }
-            .or_else(|| MoveGen::new_legal(board).next())?;
+                if entry.key == board_hash(board) { entry.best_move } else { None }
+            }.or_else(|| MoveGen::new_legal(board).next())?;
             return Some((score, best_move));
         }
 
@@ -1041,16 +953,12 @@ impl RustAlphaBetaEngine {
             let mating_value = MATE_SCORE - ply as i32;
             if mating_value < beta {
                 beta = mating_value;
-                if alpha >= beta {
-                    return Some(beta);
-                }
+                if alpha >= beta { return Some(beta); }
             }
             let mated_value = -MATE_SCORE + ply as i32;
             if mated_value > alpha {
                 alpha = mated_value;
-                if alpha >= beta {
-                    return Some(alpha);
-                }
+                if alpha >= beta { return Some(alpha); }
             }
         }
 
@@ -1071,11 +979,7 @@ impl RustAlphaBetaEngine {
         let tt_idx = tt_key as usize & TT_MASK;
         let tt_entry = {
             let entry = self.tt[tt_idx];
-            if entry.key == tt_key {
-                Some(entry)
-            } else {
-                None
-            }
+            if entry.key == tt_key { Some(entry) } else { None }
         };
         let mut tt_move = tt_entry.and_then(|entry| entry.best_move);
 
@@ -1102,11 +1006,7 @@ impl RustAlphaBetaEngine {
             if iid_depth > 0 {
                 let _ = self.negamax(board, iid_depth, alpha, beta, ply, repetition);
                 let entry = &self.tt[tt_idx];
-                tt_move = if entry.key == tt_key {
-                    entry.best_move
-                } else {
-                    None
-                };
+                tt_move = if entry.key == tt_key { entry.best_move } else { None };
             }
         }
 
@@ -1119,8 +1019,7 @@ impl RustAlphaBetaEngine {
         // Store static eval for improving detection
         self.ensure_ply_capacity(ply + 2);
         self.eval_stack[ply] = static_eval.unwrap_or(0);
-        let improving = !in_check_now
-            && ply >= 2
+        let improving = !in_check_now && ply >= 2
             && static_eval.map_or(false, |e| e > self.eval_stack[ply - 2]);
 
         if let Some(eval) = static_eval {
@@ -1159,44 +1058,6 @@ impl RustAlphaBetaEngine {
                 let score = -search?;
                 if score >= beta {
                     return Some(score);
-                }
-            }
-        }
-
-        // Probcut: if a shallow search with raised beta still beats beta+margin,
-        // the position is so good we can prune the full-depth search
-        if effective_depth >= 6 && !in_check_now && beta.abs() < MATE_SCORE - 512 {
-            let probcut_beta = beta + 200;
-            let probcut_depth = effective_depth - 4;
-            // Only search captures at reduced depth
-            let mut probcut_moves = self.scored_moves(board, tt_move, ply, true);
-            for idx in 0..probcut_moves.len() {
-                let Some(pc_move) = pick_next_move(&mut probcut_moves, idx) else {
-                    break;
-                };
-                // Only consider captures with positive SEE
-                if !is_capture(board, pc_move) {
-                    continue;
-                }
-                if static_exchange_eval(board, pc_move) < 0 {
-                    continue;
-                }
-
-                let child = board.make_move_new(pc_move);
-                let child_hash = board_hash(&child);
-                repetition.push(child_hash);
-                let search = self.negamax(
-                    &child,
-                    probcut_depth,
-                    -probcut_beta,
-                    -probcut_beta + 1,
-                    ply + 1,
-                    repetition,
-                );
-                repetition.pop(child_hash);
-                let s = -search?;
-                if s >= probcut_beta {
-                    return Some(s);
                 }
             }
         }
@@ -1250,8 +1111,7 @@ impl RustAlphaBetaEngine {
                     continue;
                 }
                 // SEE pruning for quiet moves at low depth
-                if effective_depth <= 4
-                    && move_count > 3
+                if effective_depth <= 4 && move_count > 3
                     && static_exchange_eval(board, chess_move) < -50 * effective_depth
                 {
                     continue;
@@ -1269,13 +1129,8 @@ impl RustAlphaBetaEngine {
                 let se_depth = (effective_depth - 1) / 2;
                 // Search excluding TT move at reduced depth/window
                 let excluded_score = self.negamax_excluding(
-                    board,
-                    se_depth,
-                    se_beta - 1,
-                    se_beta,
-                    ply,
-                    repetition,
-                    chess_move,
+                    board, se_depth, se_beta - 1, se_beta,
+                    ply, repetition, chess_move,
                 );
                 if let Some(se_score) = excluded_score {
                     if se_score < se_beta {
@@ -1312,9 +1167,7 @@ impl RustAlphaBetaEngine {
                     let mut reduction = late_move_reduction(effective_depth, move_count);
                     // Reduce less for countermoves and killers
                     let mk = move_key(chess_move) as usize;
-                    if self.killer_moves.get(ply).map_or(false, |k| {
-                        k[0] == Some(chess_move) || k[1] == Some(chess_move)
-                    }) {
+                    if self.killer_moves.get(ply).map_or(false, |k| k[0] == Some(chess_move) || k[1] == Some(chess_move)) {
                         reduction = (reduction - 1).max(0);
                     }
                     // Reduce more if not improving
@@ -1444,31 +1297,6 @@ impl RustAlphaBetaEngine {
             return Some(terminal_score);
         }
 
-        // TT probe in quiescence
-        let qs_key = board_hash(board);
-        let qs_tt_idx = qs_key as usize & TT_MASK;
-        let qs_tt_entry = &self.tt[qs_tt_idx];
-        let tt_move = if qs_tt_entry.key == qs_key {
-            let entry = qs_tt_entry;
-            if entry.depth >= 0 {
-                let mut a = alpha;
-                let mut b = beta;
-                match entry.flag {
-                    EXACT => return Some(entry.score),
-                    LOWER_BOUND => a = a.max(entry.score),
-                    UPPER_BOUND => b = b.min(entry.score),
-                    _ => {}
-                }
-                if a >= b {
-                    return Some(entry.score);
-                }
-            }
-            qs_tt_entry.best_move
-        } else {
-            None
-        };
-
-        let alpha_original = alpha;
         let in_check_now = in_check(board);
         let stand_pat = self.evaluate(board);
         if !in_check_now {
@@ -1478,10 +1306,7 @@ impl RustAlphaBetaEngine {
             alpha = alpha.max(stand_pat);
         }
 
-        let mut best_score = if in_check_now { -INFINITY } else { stand_pat };
-        let mut best_move_found: Option<ChessMove> = None;
-
-        let mut move_picker = self.scored_moves(board, tt_move, ply, !in_check_now);
+        let mut move_picker = self.scored_moves(board, None, ply, !in_check_now);
         for index in 0..move_picker.len() {
             let chess_move = pick_next_move(&mut move_picker, index)?;
             if !in_check_now {
@@ -1503,41 +1328,10 @@ impl RustAlphaBetaEngine {
             let search = self.quiescence(&child, -beta, -alpha, ply + 1, repetition);
             repetition.pop(child_hash);
             let score = -search?;
-            if score > best_score {
-                best_score = score;
-                best_move_found = Some(chess_move);
-            }
             if score >= beta {
-                // Store TT cutoff
-                if let Some(bm) = best_move_found {
-                    self.tt[qs_tt_idx] = TTEntry {
-                        key: qs_key,
-                        depth: 0,
-                        score,
-                        flag: LOWER_BOUND,
-                        best_move: Some(bm),
-                    };
-                }
                 return Some(score);
             }
             alpha = alpha.max(score);
-        }
-
-        // Store QS result in TT
-        let flag = if best_score <= alpha_original {
-            UPPER_BOUND
-        } else {
-            EXACT
-        };
-        let existing = &self.tt[qs_tt_idx];
-        if existing.key == 0 || existing.depth <= 0 || existing.key == qs_key {
-            self.tt[qs_tt_idx] = TTEntry {
-                key: qs_key,
-                depth: 0,
-                score: best_score,
-                flag,
-                best_move: best_move_found.or(tt_move),
-            };
         }
 
         Some(alpha)
@@ -1790,10 +1584,7 @@ impl RustAlphaBetaEngine {
             }
         }
 
-        self.eval_cache[eval_idx] = EvalCacheEntry {
-            key: board_key,
-            score,
-        };
+        self.eval_cache[eval_idx] = EvalCacheEntry { key: board_key, score };
         score
     }
 
@@ -1877,13 +1668,7 @@ impl RustAlphaBetaEngine {
         // Countermove bonus: if this move refutes the previous move
         if ply > 0 {
             if let Some(prev_move) = self.move_stack.get(ply - 1).copied().flatten() {
-                if self
-                    .countermove
-                    .get(move_key(prev_move) as usize)
-                    .copied()
-                    .flatten()
-                    == Some(chess_move)
-                {
+                if self.countermove.get(move_key(prev_move) as usize).copied().flatten() == Some(chess_move) {
                     score += 200_000;
                 }
             }
@@ -2063,11 +1848,7 @@ fn piece_bb(board: &Board, color: Color, piece: Piece) -> BitBoard {
 #[inline(always)]
 fn king_square(board: &Board, color: Color) -> Option<Square> {
     let bb = piece_bb(board, color, Piece::King);
-    if bb == BitBoard(0) {
-        None
-    } else {
-        Some(bb.to_square())
-    }
+    if bb == BitBoard(0) { None } else { Some(bb.to_square()) }
 }
 
 fn remove_piece(
@@ -2116,10 +1897,7 @@ fn attackers_to_square(
         | get_pawn_attacks(square, Color::White, black_pawns)
 }
 
-fn least_valuable_attacker(
-    attackers: BitBoard,
-    piece_occ: &[BitBoard; 6],
-) -> Option<(Square, Piece)> {
+fn least_valuable_attacker(attackers: BitBoard, piece_occ: &[BitBoard; 6]) -> Option<(Square, Piece)> {
     for piece in [
         Piece::Pawn,
         Piece::Knight,
@@ -2157,10 +1935,7 @@ fn static_exchange_eval(board: &Board, chess_move: ChessMove) -> i32 {
         *board.pieces(Piece::Queen),
         *board.pieces(Piece::King),
     ];
-    let mut color_occ = [
-        *board.color_combined(Color::White),
-        *board.color_combined(Color::Black),
-    ];
+    let mut color_occ = [*board.color_combined(Color::White), *board.color_combined(Color::Black)];
     let mut gains = [0; 32];
     gains[0] = piece_value(captured_piece);
 
@@ -2191,14 +1966,12 @@ fn static_exchange_eval(board: &Board, chess_move: ChessMove) -> i32 {
     let mut depth = 0usize;
 
     loop {
-        let attackers = attackers_to_square(dest, occupied, &piece_occ, &color_occ)
-            & color_occ[color_index(current_side)];
+        let attackers =
+            attackers_to_square(dest, occupied, &piece_occ, &color_occ) & color_occ[color_index(current_side)];
         if attackers == BitBoard(0) {
             break;
         }
-        let Some((attacker_square, attacker_piece)) =
-            least_valuable_attacker(attackers, &piece_occ)
-        else {
+        let Some((attacker_square, attacker_piece)) = least_valuable_attacker(attackers, &piece_occ) else {
             break;
         };
 
@@ -2208,13 +1981,7 @@ fn static_exchange_eval(board: &Board, chess_move: ChessMove) -> i32 {
             break;
         }
 
-        remove_piece(
-            &mut piece_occ,
-            &mut color_occ,
-            occupant_color,
-            occupant_piece,
-            dest,
-        );
+        remove_piece(&mut piece_occ, &mut color_occ, occupant_color, occupant_piece, dest);
         remove_piece(
             &mut piece_occ,
             &mut color_occ,
@@ -2267,11 +2034,14 @@ fn late_move_reduction(depth: i32, move_count: usize) -> i32 {
 
 fn late_move_pruning_limit(depth: i32) -> usize {
     match depth {
-        d if d <= 1 => 9,
-        2 => 14,
-        3 => 22,
-        4 => 32,
-        5 => 45,
+        d if d <= 1 => 4,
+        2 => 9,
+        3 => 14,
+        4 => 20,
+        5 => 28,
+        6 => 38,
+        7 => 50,
+        8 => 65,
         _ => usize::MAX,
     }
 }
@@ -2373,6 +2143,7 @@ fn move_is_legal(board: &Board, candidate: ChessMove) -> bool {
 fn in_check(board: &Board) -> bool {
     board.checkers().popcnt() > 0
 }
+
 
 fn is_castling(board: &Board, chess_move: ChessMove) -> bool {
     if board.piece_on(chess_move.get_source()) != Some(Piece::King) {
@@ -2506,10 +2277,8 @@ fn analyze_pawns(board: &Board) -> PawnCacheEntry {
         }
     }
 
-    let (mut white_structure_mg, mut white_structure_eg) =
-        pawn_structure_from_bits(&white_rank_bits);
-    let (mut black_structure_mg, mut black_structure_eg) =
-        pawn_structure_from_bits(&black_rank_bits);
+    let (mut white_structure_mg, mut white_structure_eg) = pawn_structure_from_bits(&white_rank_bits);
+    let (mut black_structure_mg, mut black_structure_eg) = pawn_structure_from_bits(&black_rank_bits);
 
     for square in piece_bb(board, Color::White, Piece::Pawn) {
         let file = file_index(square);
@@ -2562,16 +2331,8 @@ fn pawn_structure_from_bits(file_bits: &[u8; 8]) -> (i32, i32) {
             endgame -= penalty * 3 / 4;
         }
         if count > 0 {
-            let left = if file_idx > 0 {
-                file_bits[file_idx - 1]
-            } else {
-                0
-            };
-            let right = if file_idx < 7 {
-                file_bits[file_idx + 1]
-            } else {
-                0
-            };
+            let left = if file_idx > 0 { file_bits[file_idx - 1] } else { 0 };
+            let right = if file_idx < 7 { file_bits[file_idx + 1] } else { 0 };
             if left == 0 && right == 0 {
                 midgame -= ISOLATED_PAWN_PENALTY * count;
                 endgame -= ISOLATED_PAWN_PENALTY * count * 3 / 4;
@@ -2584,26 +2345,18 @@ fn pawn_structure_from_bits(file_bits: &[u8; 8]) -> (i32, i32) {
 fn is_passed_pawn_bits(color: Color, file_idx: i32, rank: i32, enemy_bits: &[u8; 8]) -> bool {
     for delta in -1..=1 {
         let ef = file_idx + delta;
-        if !(0..=7).contains(&ef) {
-            continue;
-        }
+        if !(0..=7).contains(&ef) { continue; }
         let bits = enemy_bits[ef as usize];
-        if bits == 0 {
-            continue;
-        }
+        if bits == 0 { continue; }
         if color == Color::White {
             if rank < 7 {
                 let mask = 0xFFu8 << (rank + 1);
-                if bits & mask != 0 {
-                    return false;
-                }
+                if bits & mask != 0 { return false; }
             }
         } else {
             if rank > 0 {
                 let mask = (1u8 << rank) - 1;
-                if bits & mask != 0 {
-                    return false;
-                }
+                if bits & mask != 0 { return false; }
             }
         }
     }
@@ -2629,8 +2382,7 @@ fn mobility_score(board: &Board, color: Color) -> i32 {
         score += attacks.popcnt() as i32 * MOBILITY_ROOK;
     }
     for square in piece_bb(board, color, Piece::Queen) {
-        let attacks =
-            (get_rook_moves(square, occupied) | get_bishop_moves(square, occupied)) & !own;
+        let attacks = (get_rook_moves(square, occupied) | get_bishop_moves(square, occupied)) & !own;
         score += attacks.popcnt() as i32 * MOBILITY_QUEEN;
     }
 
@@ -2644,8 +2396,7 @@ fn threat_score(board: &Board, color: Color) -> i32 {
     let mut score = 0;
 
     // Pawn attacks on enemy minors (knights/bishops)
-    let enemy_minors =
-        piece_bb(board, enemy, Piece::Knight) | piece_bb(board, enemy, Piece::Bishop);
+    let enemy_minors = piece_bb(board, enemy, Piece::Knight) | piece_bb(board, enemy, Piece::Bishop);
     for square in piece_bb(board, color, Piece::Pawn) {
         let attacks = get_pawn_attacks(square, color, enemy_minors);
         score += attacks.popcnt() as i32 * THREAT_MINOR_BY_PAWN;
@@ -2696,38 +2447,22 @@ fn passed_pawn_king_bonus(board: &Board, color: Color) -> i32 {
         let rank = rank_index(square);
         let file = file_index(square);
         // Quick passed pawn check: no enemy pawns on same or adjacent files ahead
-        let progress = if color == Color::White {
-            rank
-        } else {
-            7 - rank
-        };
-        if progress < 3 {
-            continue;
-        } // Only care about advanced pawns
+        let progress = if color == Color::White { rank } else { 7 - rank };
+        if progress < 3 { continue; } // Only care about advanced pawns
 
         let mut is_passed = true;
         for df in -1..=1i32 {
             let ef = file + df;
-            if !(0..=7).contains(&ef) {
-                continue;
-            }
+            if !(0..=7).contains(&ef) { continue; }
             for ep_sq in piece_bb(board, enemy, Piece::Pawn) {
                 let er = rank_index(ep_sq);
                 let ef2 = file_index(ep_sq);
                 if ef2 == ef {
-                    if color == Color::White && er > rank {
-                        is_passed = false;
-                        break;
-                    }
-                    if color == Color::Black && er < rank {
-                        is_passed = false;
-                        break;
-                    }
+                    if color == Color::White && er > rank { is_passed = false; break; }
+                    if color == Color::Black && er < rank { is_passed = false; break; }
                 }
             }
-            if !is_passed {
-                break;
-            }
+            if !is_passed { break; }
         }
 
         if is_passed {
@@ -2751,9 +2486,9 @@ fn chebyshev_distance(a: Square, b: Square) -> i32 {
 fn center_distance(square: Square) -> i32 {
     let file = file_index(square);
     let rank = rank_index(square);
-    let file_dist = (file * 2 - 7).abs(); // 0-7 -> distance from center
+    let file_dist = (file * 2 - 7).abs();  // 0-7 -> distance from center
     let rank_dist = (rank * 2 - 7).abs();
-    file_dist + rank_dist // Manhattan distance from center (0-14 range)
+    file_dist + rank_dist  // Manhattan distance from center (0-14 range)
 }
 
 /// Mop-up evaluation: bonus for driving enemy king to corner in won endgames.
@@ -2777,12 +2512,8 @@ fn mopup_score(board: &Board, color: Color) -> i32 {
         return 0;
     }
 
-    let Some(our_king) = king_square(board, color) else {
-        return 0;
-    };
-    let Some(enemy_king) = king_square(board, enemy) else {
-        return 0;
-    };
+    let Some(our_king) = king_square(board, color) else { return 0 };
+    let Some(enemy_king) = king_square(board, enemy) else { return 0 };
 
     let mut score = 0;
     // Bonus for enemy king being far from center (pushed to edge/corner)
@@ -3032,8 +2763,7 @@ fn king_ring_attack_pressure(board: &Board, color: Color, king_sq: Square) -> i3
     }
     // Queen attacks on king ring
     for square in piece_bb(board, enemy, Piece::Queen) {
-        let attacks =
-            (get_rook_moves(square, occupied) | get_bishop_moves(square, occupied)) & king_ring;
+        let attacks = (get_rook_moves(square, occupied) | get_bishop_moves(square, occupied)) & king_ring;
         pressure += attacks.popcnt() as i32 * 4;
     }
 

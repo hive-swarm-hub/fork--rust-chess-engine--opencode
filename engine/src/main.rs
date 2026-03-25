@@ -1450,6 +1450,10 @@ impl RustAlphaBetaEngine {
         white_mg += white_connected;
         black_mg += black_connected;
 
+        // Passed pawn king distance (endgame only)
+        white_eg += passed_pawn_king_bonus(board, Color::White);
+        black_eg += passed_pawn_king_bonus(board, Color::Black);
+
         let white_score = tapered_score(white_mg, white_eg, phase);
         let black_score = tapered_score(black_mg, black_eg, phase);
 
@@ -2298,16 +2302,67 @@ fn threat_score(board: &Board, color: Color) -> i32 {
     score
 }
 
+/// Passed pawn king distance bonus (endgame)
+/// Bonus when our king is close to our passed pawns, penalty when enemy king is close
+fn passed_pawn_king_bonus(board: &Board, color: Color) -> i32 {
+    let enemy = !color;
+    let our_king = king_square(board, color);
+    let enemy_king = king_square(board, enemy);
+    let (our_king, enemy_king) = match (our_king, enemy_king) {
+        (Some(ok), Some(ek)) => (ok, ek),
+        _ => return 0,
+    };
+
+    let mut bonus = 0;
+    for square in piece_bb(board, color, Piece::Pawn) {
+        let rank = rank_index(square);
+        let file = file_index(square);
+        // Quick passed pawn check: no enemy pawns on same or adjacent files ahead
+        let progress = if color == Color::White { rank } else { 7 - rank };
+        if progress < 3 { continue; } // Only care about advanced pawns
+
+        let mut is_passed = true;
+        for df in -1..=1i32 {
+            let ef = file + df;
+            if !(0..=7).contains(&ef) { continue; }
+            for ep_sq in piece_bb(board, enemy, Piece::Pawn) {
+                let er = rank_index(ep_sq);
+                let ef2 = file_index(ep_sq);
+                if ef2 == ef {
+                    if color == Color::White && er > rank { is_passed = false; break; }
+                    if color == Color::Black && er < rank { is_passed = false; break; }
+                }
+            }
+            if !is_passed { break; }
+        }
+
+        if is_passed {
+            let our_dist = chebyshev_distance(our_king, square);
+            let enemy_dist = chebyshev_distance(enemy_king, square);
+            // Bonus scales with advancement
+            let weight = progress as i32;
+            bonus += (enemy_dist - our_dist) * weight * 2;
+        }
+    }
+    bonus
+}
+
+fn chebyshev_distance(a: Square, b: Square) -> i32 {
+    let df = (file_index(a) - file_index(b)).abs();
+    let dr = (rank_index(a) - rank_index(b)).abs();
+    df.max(dr)
+}
+
 /// Connected rooks: bonus when rooks can see each other (same rank/file, no pieces between)
 fn connected_rooks_score(board: &Board, color: Color) -> i32 {
-    let rooks: Vec<Square> = piece_bb(board, color, Piece::Rook).into_iter().collect();
-    if rooks.len() < 2 {
+    let rook_bb = piece_bb(board, color, Piece::Rook);
+    if rook_bb.popcnt() < 2 {
         return 0;
     }
+    let first_rook = rook_bb.to_square();
     let occupied = *board.combined();
-    // Check if rook 0 can see rook 1
-    let attacks = get_rook_moves(rooks[0], occupied);
-    if attacks & BitBoard::from_square(rooks[1]) != BitBoard(0) {
+    let attacks = get_rook_moves(first_rook, occupied);
+    if (attacks & rook_bb & !BitBoard::from_square(first_rook)) != BitBoard(0) {
         CONNECTED_ROOKS_BONUS
     } else {
         0

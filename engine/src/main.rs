@@ -182,6 +182,13 @@ const MOBILITY_BISHOP: i32 = 5;
 const MOBILITY_ROOK: i32 = 2;
 const MOBILITY_QUEEN: i32 = 1;
 
+const CONNECTED_ROOKS_BONUS: i32 = 10;
+const MINOR_BEHIND_PAWN_BONUS: i32 = 5;
+const THREAT_MINOR_BY_PAWN: i32 = 25;
+const THREAT_ROOK_BY_MINOR: i32 = 20;
+const THREAT_QUEEN_BY_MINOR: i32 = 30;
+const THREAT_QUEEN_BY_ROOK: i32 = 25;
+
 const PASSED_PAWN_BONUS: [i32; 8] = [0, 8, 12, 20, 35, 60, 90, 0];
 const ENDGAME_PASSED_PAWN_BONUS: [i32; 8] = [0, 0, 4, 8, 16, 32, 56, 0];
 const SUPPORTED_PASSED_PAWN_BONUS: [i32; 8] = [0, 0, 3, 6, 12, 20, 32, 0];
@@ -231,6 +238,37 @@ const KING_ENDGAME_TABLE: [i32; 64] = [
     30, 20, -10, -30, -30, -10, 30, 40, 40, 30, -10, -30, -30, -10, 30, 40, 40, 30, -10, -30, -30,
     -10, 20, 30, 30, 20, -10, -30, -30, -30, 0, 0, 0, 0, -30, -30, -50, -30, -30, -30, -30, -30,
     -30, -50,
+];
+
+// Endgame piece-square tables (for proper tapered eval)
+const PAWN_EG_TABLE: [i32; 64] = [
+    0, 0, 0, 0, 0, 0, 0, 0, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,
+    20, 20, 20, 20, 20, 20, 20, 20, 30, 30, 30, 30, 30, 30, 30, 30, 50, 50, 50, 50, 50, 50, 50, 50,
+    80, 80, 80, 80, 80, 80, 80, 80, 0, 0, 0, 0, 0, 0, 0, 0,
+];
+
+const KNIGHT_EG_TABLE: [i32; 64] = [
+    -30, -20, -10, -10, -10, -10, -20, -30, -20, -10, 0, 5, 5, 0, -10, -20, -10, 0, 10, 15, 15, 10,
+    0, -10, -10, 5, 15, 20, 20, 15, 5, -10, -10, 5, 15, 20, 20, 15, 5, -10, -10, 0, 10, 15, 15, 10,
+    0, -10, -20, -10, 0, 5, 5, 0, -10, -20, -30, -20, -10, -10, -10, -10, -20, -30,
+];
+
+const BISHOP_EG_TABLE: [i32; 64] = [
+    -15, -10, -10, -10, -10, -10, -10, -15, -10, 0, 0, 0, 0, 0, 0, -10, -10, 0, 5, 10, 10, 5, 0,
+    -10, -10, 0, 10, 15, 15, 10, 0, -10, -10, 0, 10, 15, 15, 10, 0, -10, -10, 0, 5, 10, 10, 5, 0,
+    -10, -10, 0, 0, 0, 0, 0, 0, -10, -15, -10, -10, -10, -10, -10, -10, -15,
+];
+
+const ROOK_EG_TABLE: [i32; 64] = [
+    0, 0, 0, 0, 0, 0, 0, 0, 5, 5, 5, 5, 5, 5, 5, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0,
+];
+
+const QUEEN_EG_TABLE: [i32; 64] = [
+    -10, -5, -5, -5, -5, -5, -5, -10, -5, 0, 0, 0, 0, 0, 0, -5, -5, 0, 5, 5, 5, 5, 0, -5,
+    -5, 0, 5, 10, 10, 5, 0, -5, -5, 0, 5, 10, 10, 5, 0, -5, -5, 0, 5, 5, 5, 5, 0, -5,
+    -5, 0, 0, 0, 0, 0, 0, -5, -10, -5, -5, -5, -5, -5, -5, -10,
 ];
 
 // Precomputed LMR reduction table
@@ -1241,58 +1279,58 @@ impl RustAlphaBetaEngine {
         let mut black_eg = 0;
 
         for square in piece_bb(board, Color::White, Piece::Pawn) {
-            let pst = PAWN_TABLE[square_index(square)];
-            white_mg += PAWN + pst;
-            white_eg += PAWN + pst / 2;
+            let idx = square_index(square);
+            white_mg += PAWN + PAWN_TABLE[idx];
+            white_eg += PAWN + PAWN_EG_TABLE[idx];
         }
         for square in piece_bb(board, Color::Black, Piece::Pawn) {
-            let pst = PAWN_TABLE[mirror_index(square_index(square))];
-            black_mg += PAWN + pst;
-            black_eg += PAWN + pst / 2;
+            let idx = mirror_index(square_index(square));
+            black_mg += PAWN + PAWN_TABLE[idx];
+            black_eg += PAWN + PAWN_EG_TABLE[idx];
         }
 
         for square in piece_bb(board, Color::White, Piece::Knight) {
-            let pst = KNIGHT_TABLE[square_index(square)];
-            white_mg += KNIGHT + pst;
-            white_eg += KNIGHT + pst / 4;
+            let idx = square_index(square);
+            white_mg += KNIGHT + KNIGHT_TABLE[idx];
+            white_eg += KNIGHT + KNIGHT_EG_TABLE[idx];
         }
         for square in piece_bb(board, Color::Black, Piece::Knight) {
-            let pst = KNIGHT_TABLE[mirror_index(square_index(square))];
-            black_mg += KNIGHT + pst;
-            black_eg += KNIGHT + pst / 4;
+            let idx = mirror_index(square_index(square));
+            black_mg += KNIGHT + KNIGHT_TABLE[idx];
+            black_eg += KNIGHT + KNIGHT_EG_TABLE[idx];
         }
 
         for square in piece_bb(board, Color::White, Piece::Bishop) {
-            let pst = BISHOP_TABLE[square_index(square)];
-            white_mg += BISHOP + pst;
-            white_eg += BISHOP + pst / 2;
+            let idx = square_index(square);
+            white_mg += BISHOP + BISHOP_TABLE[idx];
+            white_eg += BISHOP + BISHOP_EG_TABLE[idx];
         }
         for square in piece_bb(board, Color::Black, Piece::Bishop) {
-            let pst = BISHOP_TABLE[mirror_index(square_index(square))];
-            black_mg += BISHOP + pst;
-            black_eg += BISHOP + pst / 2;
+            let idx = mirror_index(square_index(square));
+            black_mg += BISHOP + BISHOP_TABLE[idx];
+            black_eg += BISHOP + BISHOP_EG_TABLE[idx];
         }
 
         for square in piece_bb(board, Color::White, Piece::Rook) {
-            let pst = ROOK_TABLE[square_index(square)];
-            white_mg += ROOK + pst;
-            white_eg += ROOK + pst / 3;
+            let idx = square_index(square);
+            white_mg += ROOK + ROOK_TABLE[idx];
+            white_eg += ROOK + ROOK_EG_TABLE[idx];
         }
         for square in piece_bb(board, Color::Black, Piece::Rook) {
-            let pst = ROOK_TABLE[mirror_index(square_index(square))];
-            black_mg += ROOK + pst;
-            black_eg += ROOK + pst / 3;
+            let idx = mirror_index(square_index(square));
+            black_mg += ROOK + ROOK_TABLE[idx];
+            black_eg += ROOK + ROOK_EG_TABLE[idx];
         }
 
         for square in piece_bb(board, Color::White, Piece::Queen) {
-            let pst = QUEEN_TABLE[square_index(square)];
-            white_mg += QUEEN + pst;
-            white_eg += QUEEN + pst / 4;
+            let idx = square_index(square);
+            white_mg += QUEEN + QUEEN_TABLE[idx];
+            white_eg += QUEEN + QUEEN_EG_TABLE[idx];
         }
         for square in piece_bb(board, Color::Black, Piece::Queen) {
-            let pst = QUEEN_TABLE[mirror_index(square_index(square))];
-            black_mg += QUEEN + pst;
-            black_eg += QUEEN + pst / 4;
+            let idx = mirror_index(square_index(square));
+            black_mg += QUEEN + QUEEN_TABLE[idx];
+            black_eg += QUEEN + QUEEN_EG_TABLE[idx];
         }
 
         white_mg += king_position_score(board, Color::White, false);
@@ -1363,6 +1401,20 @@ impl RustAlphaBetaEngine {
             &pawn_entry.black_files,
             &pawn_entry.white_files,
         );
+
+        // Threat evaluation
+        let white_threats = threat_score(board, Color::White);
+        let black_threats = threat_score(board, Color::Black);
+        white_mg += white_threats;
+        black_mg += black_threats;
+        white_eg += white_threats / 2;
+        black_eg += black_threats / 2;
+
+        // Connected rooks bonus
+        let white_connected = connected_rooks_score(board, Color::White);
+        let black_connected = connected_rooks_score(board, Color::Black);
+        white_mg += white_connected;
+        black_mg += black_connected;
 
         let white_score = tapered_score(white_mg, white_eg, phase);
         let black_score = tapered_score(black_mg, black_eg, phase);
@@ -2168,6 +2220,64 @@ fn mobility_score(board: &Board, color: Color) -> i32 {
     }
 
     score
+}
+
+/// Threat evaluation: bonus for attacking enemy pieces with lower-value pieces
+fn threat_score(board: &Board, color: Color) -> i32 {
+    let enemy = !color;
+    let occupied = *board.combined();
+    let mut score = 0;
+
+    // Pawn attacks on enemy minors (knights/bishops)
+    let enemy_minors = piece_bb(board, enemy, Piece::Knight) | piece_bb(board, enemy, Piece::Bishop);
+    for square in piece_bb(board, color, Piece::Pawn) {
+        let attacks = get_pawn_attacks(square, color, enemy_minors);
+        score += attacks.popcnt() as i32 * THREAT_MINOR_BY_PAWN;
+    }
+
+    // Minor attacks on enemy rooks
+    let enemy_rooks = piece_bb(board, enemy, Piece::Rook);
+    for square in piece_bb(board, color, Piece::Knight) {
+        let attacks = get_knight_moves(square) & enemy_rooks;
+        score += attacks.popcnt() as i32 * THREAT_ROOK_BY_MINOR;
+    }
+    for square in piece_bb(board, color, Piece::Bishop) {
+        let attacks = get_bishop_moves(square, occupied) & enemy_rooks;
+        score += attacks.popcnt() as i32 * THREAT_ROOK_BY_MINOR;
+    }
+
+    // Minor/rook attacks on enemy queens
+    let enemy_queens = piece_bb(board, enemy, Piece::Queen);
+    for square in piece_bb(board, color, Piece::Knight) {
+        let attacks = get_knight_moves(square) & enemy_queens;
+        score += attacks.popcnt() as i32 * THREAT_QUEEN_BY_MINOR;
+    }
+    for square in piece_bb(board, color, Piece::Bishop) {
+        let attacks = get_bishop_moves(square, occupied) & enemy_queens;
+        score += attacks.popcnt() as i32 * THREAT_QUEEN_BY_MINOR;
+    }
+    for square in piece_bb(board, color, Piece::Rook) {
+        let attacks = get_rook_moves(square, occupied) & enemy_queens;
+        score += attacks.popcnt() as i32 * THREAT_QUEEN_BY_ROOK;
+    }
+
+    score
+}
+
+/// Connected rooks: bonus when rooks can see each other (same rank/file, no pieces between)
+fn connected_rooks_score(board: &Board, color: Color) -> i32 {
+    let rooks: Vec<Square> = piece_bb(board, color, Piece::Rook).into_iter().collect();
+    if rooks.len() < 2 {
+        return 0;
+    }
+    let occupied = *board.combined();
+    // Check if rook 0 can see rook 1
+    let attacks = get_rook_moves(rooks[0], occupied);
+    if attacks & BitBoard::from_square(rooks[1]) != BitBoard(0) {
+        CONNECTED_ROOKS_BONUS
+    } else {
+        0
+    }
 }
 
 fn rook_activity_score(

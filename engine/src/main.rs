@@ -442,6 +442,7 @@ struct RustAlphaBetaEngine {
     capture_history: Vec<i16>,
     countermove: Vec<Option<ChessMove>>,  // indexed by previous move's move_key
     move_stack: Vec<Option<ChessMove>>,  // move played at each ply for countermove tracking
+    eval_stack: Vec<i32>,  // static eval at each ply for improving detection
     eval_cache: Vec<EvalCacheEntry>,
     pawn_cache: Vec<PawnCacheEntry>,
     deadline: Option<Instant>,
@@ -460,6 +461,7 @@ impl RustAlphaBetaEngine {
             capture_history: vec![0; HISTORY_SIZE * CAPTURE_HISTORY_PIECES],
             countermove: vec![None; HISTORY_SIZE],
             move_stack: vec![None; KILLER_PLY_CAPACITY],
+            eval_stack: vec![0; KILLER_PLY_CAPACITY],
             eval_cache: vec![EvalCacheEntry::default(); EVAL_CACHE_SIZE],
             pawn_cache: vec![PawnCacheEntry::default(); PAWN_CACHE_SIZE],
             deadline: None,
@@ -811,6 +813,7 @@ impl RustAlphaBetaEngine {
             capture_history: self.capture_history.clone(),
             countermove: self.countermove.clone(),
             move_stack: self.move_stack.clone(),
+            eval_stack: self.eval_stack.clone(),
             eval_cache: self.eval_cache.clone(),
             pawn_cache: self.pawn_cache.clone(),
             deadline: self.deadline,
@@ -934,6 +937,15 @@ impl RustAlphaBetaEngine {
             Some(self.evaluate(board))
         } else {
             None
+        };
+
+        // Store static eval for improving detection
+        self.ensure_ply_capacity(ply + 2);
+        self.eval_stack[ply] = static_eval.unwrap_or(0);
+        let improving = if !in_check_now && ply >= 2 {
+            static_eval.unwrap_or(0) > self.eval_stack[ply - 2]
+        } else {
+            true // default to improving (conservative)
         };
 
         if let Some(eval) = static_eval {
@@ -1091,11 +1103,13 @@ impl RustAlphaBetaEngine {
                     } else if hist_score < -4000 {
                         reduction += 1;
                     }
-                    // Reduce more if not improving
-                    if let Some(eval) = static_eval {
-                        if eval <= alpha {
-                            reduction += 1;
-                        }
+                    // Reduce more when not improving
+                    if !improving {
+                        reduction += 1;
+                    }
+                    // Reduce less at PV nodes
+                    if beta - alpha > 1 {
+                        reduction = (reduction - 1).max(0);
                     }
                     search_depth = (search_depth - reduction).max(0);
                 }
@@ -1584,14 +1598,19 @@ impl RustAlphaBetaEngine {
         killers[0] = Some(chess_move);
     }
 
-    fn update_history(&mut self, chess_move: ChessMove, delta: i32) {
+    /// Stockfish-style history gravity: bonus is scaled down as the value approaches the limit,
+    /// preventing saturation and allowing recent information to have more weight.
+    fn update_history(&mut self, chess_move: ChessMove, bonus: i32) {
         let history = &mut self.history_heuristic[move_key(chess_move) as usize];
-        *history = (*history + delta).clamp(-HISTORY_LIMIT, HISTORY_LIMIT);
+        let clamped_bonus = bonus.clamp(-HISTORY_LIMIT, HISTORY_LIMIT);
+        *history += clamped_bonus - *history * clamped_bonus.abs() / HISTORY_LIMIT;
     }
 
-    fn update_capture_history(&mut self, chess_move: ChessMove, victim: Piece, delta: i32) {
+    fn update_capture_history(&mut self, chess_move: ChessMove, victim: Piece, bonus: i32) {
         let history = &mut self.capture_history[capture_history_key(chess_move, victim)];
-        let updated = i32::from(*history) + delta;
+        let h = i32::from(*history);
+        let clamped_bonus = bonus.clamp(-CAPTURE_HISTORY_LIMIT, CAPTURE_HISTORY_LIMIT);
+        let updated = h + clamped_bonus - h * clamped_bonus.abs() / CAPTURE_HISTORY_LIMIT;
         *history = updated.clamp(-CAPTURE_HISTORY_LIMIT, CAPTURE_HISTORY_LIMIT) as i16;
     }
 
@@ -1601,6 +1620,9 @@ impl RustAlphaBetaEngine {
         }
         if self.move_stack.len() < size {
             self.move_stack.resize(size, None);
+        }
+        if self.eval_stack.len() < size {
+            self.eval_stack.resize(size, 0);
         }
     }
 

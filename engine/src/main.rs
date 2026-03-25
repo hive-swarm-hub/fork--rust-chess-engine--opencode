@@ -159,18 +159,6 @@ const EXACT: u8 = 0;
 const LOWER_BOUND: u8 = 1;
 const UPPER_BOUND: u8 = 2;
 
-// PeSTO-style piece values (tuned for midgame/endgame)
-const PAWN_MG: i32 = 82;
-const KNIGHT_MG: i32 = 337;
-const BISHOP_MG: i32 = 365;
-const ROOK_MG: i32 = 477;
-const QUEEN_MG: i32 = 1025;
-const PAWN_EG: i32 = 94;
-const KNIGHT_EG: i32 = 281;
-const BISHOP_EG: i32 = 297;
-const ROOK_EG: i32 = 512;
-const QUEEN_EG: i32 = 936;
-// Legacy piece values for move ordering (SEE, MVV-LVA)
 const PAWN: i32 = 100;
 const KNIGHT: i32 = 320;
 const BISHOP: i32 = 330;
@@ -195,7 +183,7 @@ const MOBILITY_ROOK: i32 = 2;
 const MOBILITY_QUEEN: i32 = 1;
 
 const CONNECTED_ROOKS_BONUS: i32 = 10;
-const _MINOR_BEHIND_PAWN_BONUS: i32 = 5;
+const MINOR_BEHIND_PAWN_BONUS: i32 = 5;
 const THREAT_MINOR_BY_PAWN: i32 = 25;
 const THREAT_ROOK_BY_MINOR: i32 = 20;
 const THREAT_QUEEN_BY_MINOR: i32 = 30;
@@ -208,138 +196,79 @@ const REVERSE_FUTILITY_MARGIN: [i32; 4] = [0, 85, 150, 235];
 const FUTILITY_MARGIN: [i32; 4] = [0, 100, 170, 260];
 const RAZOR_MARGIN: [i32; 3] = [0, 250, 380];
 
-// PeSTO midgame piece-square tables (indexed rank1=0..7 to rank8=56..63)
 const PAWN_TABLE: [i32; 64] = [
-      0,   0,   0,   0,   0,   0,   0,   0,
-    -35,  -1, -20, -23, -15,  24,  38, -22,
-    -26,  -4,  -4, -10,   3,   3,  33, -12,
-    -27,  -2,  -5,  12,  17,   6,  10, -25,
-    -14,  13,   6,  21,  23,  12,  17, -23,
-     -6,   7,  26,  31,  65,  56,  25, -20,
-     98, 134,  61,  95,  68, 126,  34, -11,
-      0,   0,   0,   0,   0,   0,   0,   0,
+    0, 0, 0, 0, 0, 0, 0, 0, 5, 10, 10, -20, -20, 10, 10, 5, 5, -5, -10, 0, 0, -10, -5, 5, 0, 0, 0,
+    20, 20, 0, 0, 0, 5, 5, 10, 25, 25, 10, 5, 5, 10, 10, 20, 30, 30, 20, 10, 10, 50, 50, 50, 50,
+    50, 50, 50, 50, 0, 0, 0, 0, 0, 0, 0, 0,
 ];
 
 const KNIGHT_TABLE: [i32; 64] = [
-   -105, -21, -58, -33, -17, -28, -19, -23,
-    -29, -53, -12,  -3,  -1,  18, -14, -19,
-    -23,  -9,  12,  10,  19,  17,  25, -16,
-    -13,   4,  16,  13,  28,  19,  21,  -8,
-     -9,  17,  19,  53,  37,  69,  18,  22,
-    -47,  60,  37,  65,  84, 129,  73,  44,
-    -73, -41,  72,  36,  23,  62,   7, -17,
-   -167, -89, -34, -49,  61, -97, -15,-107,
+    -50, -40, -30, -30, -30, -30, -40, -50, -40, -20, 0, 0, 0, 0, -20, -40, -30, 0, 10, 15, 15, 10,
+    0, -30, -30, 5, 15, 20, 20, 15, 5, -30, -30, 0, 15, 20, 20, 15, 0, -30, -30, 5, 10, 15, 15, 10,
+    5, -30, -40, -20, 0, 5, 5, 0, -20, -40, -50, -40, -30, -30, -30, -30, -40, -50,
 ];
 
 const BISHOP_TABLE: [i32; 64] = [
-    -33,  -3, -14, -21, -13, -12, -39, -21,
-      4,  15,  16,   0,   7,  21,  33,   1,
-      0,  15,  15,  15,  14,  27,  18,  10,
-     -6,  13,  13,  26,  34,  12,  10,   4,
-     -4,   5,  19,  50,  37,  37,   7,  -2,
-    -16,  37,  43,  40,  35,  50,  37,  -2,
-    -26,  16, -18, -13,  30,  59,  18, -47,
-    -29,   4, -82, -37, -25, -42,   7,  -8,
+    -20, -10, -10, -10, -10, -10, -10, -20, -10, 0, 0, 0, 0, 0, 0, -10, -10, 0, 5, 10, 10, 5, 0,
+    -10, -10, 5, 5, 10, 10, 5, 5, -10, -10, 0, 10, 10, 10, 10, 0, -10, -10, 10, 10, 10, 10, 10, 10,
+    -10, -10, 5, 0, 0, 0, 0, 5, -10, -20, -10, -10, -10, -10, -10, -10, -20,
 ];
 
 const ROOK_TABLE: [i32; 64] = [
-    -19, -13,   1,  17,  16,   7, -37, -26,
-    -44, -16, -20,  -9,  -1,  11,  -6, -71,
-    -45, -25, -16, -17,   3,   0,  -5, -33,
-    -36, -26, -12,  -1,   9,  -7,   6, -23,
-    -24, -11,   7,  26,  24,  35,  -8, -20,
-     -5,  19,  26,  36,  17,  45,  61,  16,
-     27,  32,  58,  62,  80,  67,  26,  44,
-     32,  42,  32,  51,  63,   9,  31,  43,
+    0, 0, 0, 5, 5, 0, 0, 0, -5, 0, 0, 0, 0, 0, 0, -5, -5, 0, 0, 0, 0, 0, 0, -5, -5, 0, 0, 0, 0, 0,
+    0, -5, -5, 0, 0, 0, 0, 0, 0, -5, -5, 0, 0, 0, 0, 0, 0, -5, 5, 10, 10, 10, 10, 10, 10, 5, 0, 0,
+    0, 0, 0, 0, 0, 0,
 ];
 
 const QUEEN_TABLE: [i32; 64] = [
-     -1, -18,  -9,  10, -15, -25, -31, -50,
-    -35,  -8,  11,   2,   8,  15,  -3,   1,
-    -14,   2, -11,  -2,  -5,   2,  14,   5,
-     -9, -26,  -9, -10,  -2,  -4,   3,  -3,
-    -27, -27, -16, -16,  -1,  17,  -2,   1,
-    -13, -17,   7,   8,  29,  56,  47,  57,
-    -24, -39,  -5,   1, -16,  57,  28,  54,
-    -28,   0,  29,  12,  59,  44,  43,  45,
+    -20, -10, -10, -5, -5, -10, -10, -20, -10, 0, 0, 0, 0, 0, 0, -10, -10, 0, 5, 5, 5, 5, 0, -10,
+    -5, 0, 5, 5, 5, 5, 0, -5, 0, 0, 5, 5, 5, 5, 0, -5, -10, 5, 5, 5, 5, 5, 0, -10, -10, 0, 5, 0, 0,
+    0, 0, -10, -20, -10, -10, -5, -5, -10, -10, -20,
 ];
 
 const KING_MIDGAME_TABLE: [i32; 64] = [
-    -15,  36,  12, -54,   8, -28,  24,  14,
-      1,   7,  -8, -64, -43, -16,   9,   8,
-    -14, -14, -22, -46, -44, -30, -15, -27,
-    -49,  -1, -27, -39, -46, -44, -33, -51,
-    -17, -20, -12, -27, -30, -25, -14, -36,
-     -9,  24,   2, -16, -20,   6,  22, -22,
-     29,  -1, -20,  -7,  -8,  -4, -38, -29,
-    -65,  23,  16, -15, -56, -34,   2,  13,
+    -30, -40, -40, -50, -50, -40, -40, -30, -30, -40, -40, -50, -50, -40, -40, -30, -30, -40, -40,
+    -50, -50, -40, -40, -30, -30, -40, -40, -50, -50, -40, -40, -30, -20, -30, -30, -40, -40, -30,
+    -30, -20, -10, -20, -20, -20, -20, -20, -20, -10, 20, 20, 0, 0, 0, 0, 20, 20, 20, 30, 10, 0, 0,
+    10, 30, 20,
 ];
 
 const KING_ENDGAME_TABLE: [i32; 64] = [
-    -53, -34, -21, -11, -28, -14, -24, -43,
-    -27, -11,   4,  13,  14,   4,  -5, -17,
-    -19,  -3,  11,  21,  23,  16,   7,  -9,
-    -18,  -4,  21,  24,  27,  23,   9, -11,
-     -8,  22,  24,  27,  26,  33,  26,   3,
-     10,  17,  23,  15,  20,  45,  44,  13,
-    -12,  17,  14,  17,  17,  38,  23,  11,
-    -74, -35, -18, -18, -11,  15,   4, -17,
+    -50, -40, -30, -20, -20, -30, -40, -50, -30, -20, -10, 0, 0, -10, -20, -30, -30, -10, 20, 30,
+    30, 20, -10, -30, -30, -10, 30, 40, 40, 30, -10, -30, -30, -10, 30, 40, 40, 30, -10, -30, -30,
+    -10, 20, 30, 30, 20, -10, -30, -30, -30, 0, 0, 0, 0, -30, -30, -50, -30, -30, -30, -30, -30,
+    -30, -50,
 ];
 
-// PeSTO endgame piece-square tables
+// Endgame piece-square tables (for proper tapered eval)
 const PAWN_EG_TABLE: [i32; 64] = [
-      0,   0,   0,   0,   0,   0,   0,   0,
-     13,   8,   8,  10,  13,   0,   2,  -7,
-      4,   7,  -6,   1,   0,  -5,  -1,  -8,
-     13,   9,  -3,  -7,  -7,  -8,   3,  -1,
-     32,  24,  13,   5,  -2,   4,  17,  17,
-     94, 100,  85,  67,  56,  53,  82,  84,
-    178, 173, 158, 134, 147, 132, 165, 187,
-      0,   0,   0,   0,   0,   0,   0,   0,
+    0, 0, 0, 0, 0, 0, 0, 0, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,
+    20, 20, 20, 20, 20, 20, 20, 20, 30, 30, 30, 30, 30, 30, 30, 30, 50, 50, 50, 50, 50, 50, 50, 50,
+    80, 80, 80, 80, 80, 80, 80, 80, 0, 0, 0, 0, 0, 0, 0, 0,
 ];
 
 const KNIGHT_EG_TABLE: [i32; 64] = [
-    -29, -51, -23, -15, -22, -18, -50, -64,
-    -42, -20, -10,  -5,  -2, -20, -23, -44,
-    -23,  -3,  -1,  15,  10,  -3, -20, -22,
-    -18,  -6,  16,  25,  16,  17,   4, -18,
-    -17,   3,  22,  22,  22,  11,   8, -18,
-    -24, -20,  10,   9,  -1,  -9, -19, -41,
-    -25,  -8, -25,  -2,  -9, -25, -24, -52,
-    -58, -38, -13, -28, -31, -27, -63, -99,
+    -30, -20, -10, -10, -10, -10, -20, -30, -20, -10, 0, 5, 5, 0, -10, -20, -10, 0, 10, 15, 15, 10,
+    0, -10, -10, 5, 15, 20, 20, 15, 5, -10, -10, 5, 15, 20, 20, 15, 5, -10, -10, 0, 10, 15, 15, 10,
+    0, -10, -20, -10, 0, 5, 5, 0, -10, -20, -30, -20, -10, -10, -10, -10, -20, -30,
 ];
 
 const BISHOP_EG_TABLE: [i32; 64] = [
-    -23,  -9, -23,  -5,  -9, -16,  -5, -17,
-    -14, -18,  -7,  -1,   4,  -9, -15, -27,
-    -12,  -3,   8,  10,  13,   3,  -7, -15,
-     -6,   3,  13,  19,   7,  10,  -3,  -9,
-     -3,   9,  12,   9,  14,  10,   3,   2,
-      2,  -8,   0,  -1,  -2,   6,   0,   4,
-     -8,  -4,   7, -12,  -3, -13,  -4, -14,
-    -14, -21, -11,  -8,  -7,  -9, -17, -24,
+    -15, -10, -10, -10, -10, -10, -10, -15, -10, 0, 0, 0, 0, 0, 0, -10, -10, 0, 5, 10, 10, 5, 0,
+    -10, -10, 0, 10, 15, 15, 10, 0, -10, -10, 0, 10, 15, 15, 10, 0, -10, -10, 0, 5, 10, 10, 5, 0,
+    -10, -10, 0, 0, 0, 0, 0, 0, -10, -15, -10, -10, -10, -10, -10, -10, -15,
 ];
 
 const ROOK_EG_TABLE: [i32; 64] = [
-     -9,   2,   3,  -1,  -5, -13,   4, -20,
-     -6,  -6,   0,   2,  -9,  -9, -11,  -3,
-     -4,   0,  -5,  -1,  -7, -12,  -8, -16,
-      3,   5,   8,   4,  -5,  -6,  -8, -11,
-      4,   3,  13,   1,   2,   1,  -1,   2,
-      7,   7,   7,   5,   4,  -3,  -5,  -3,
-     11,  13,  13,  11,  -3,   3,   8,   3,
-     13,  10,  18,  15,  12,  12,   8,   5,
+    0, 0, 0, 0, 0, 0, 0, 0, 5, 5, 5, 5, 5, 5, 5, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0,
 ];
 
 const QUEEN_EG_TABLE: [i32; 64] = [
-    -33, -28, -22, -43,  -5, -32, -20, -41,
-    -22, -23, -30, -16, -16, -23, -36, -32,
-    -16, -27,  15,   6,   9,  17,  10,   5,
-    -18,  28,  19,  47,  31,  34,  39,  23,
-      3,  22,  24,  45,  57,  40,  57,  36,
-    -20,   6,   9,  49,  47,  35,  19,   9,
-    -17,  20,  32,  41,  58,  25,  30,   0,
-     -9,  22,  22,  27,  27,  19,  10,  20,
+    -10, -5, -5, -5, -5, -5, -5, -10, -5, 0, 0, 0, 0, 0, 0, -5, -5, 0, 5, 5, 5, 5, 0, -5,
+    -5, 0, 5, 10, 10, 5, 0, -5, -5, 0, 5, 10, 10, 5, 0, -5, -5, 0, 5, 5, 5, 5, 0, -5,
+    -5, 0, 0, 0, 0, 0, 0, -5, -10, -5, -5, -5, -5, -5, -5, -10,
 ];
 
 // Precomputed LMR reduction table
@@ -913,18 +842,27 @@ impl RustAlphaBetaEngine {
             return Some(terminal_score);
         }
 
-        // Mate distance pruning
-        {
-            let mate_alpha = (-MATE_SCORE + ply as i32).max(alpha);
-            let mate_beta = (MATE_SCORE - ply as i32 - 1).min(beta);
-            if mate_alpha >= mate_beta {
-                return Some(mate_alpha);
-            }
-        }
-
         // Max ply limit to prevent search explosions
         if ply >= 96 {
             return Some(self.evaluate(board));
+        }
+
+        // Mate distance pruning
+        {
+            let mating_value = MATE_SCORE - ply as i32;
+            if mating_value < beta {
+                beta = mating_value;
+                if alpha >= beta {
+                    return Some(beta);
+                }
+            }
+            let mated_value = -MATE_SCORE + ply as i32;
+            if mated_value > alpha {
+                alpha = mated_value;
+                if alpha >= beta {
+                    return Some(alpha);
+                }
+            }
         }
 
         let in_check_now = in_check(board);
@@ -1366,57 +1304,57 @@ impl RustAlphaBetaEngine {
 
         for square in piece_bb(board, Color::White, Piece::Pawn) {
             let idx = square_index(square);
-            white_mg += PAWN_MG + PAWN_TABLE[idx];
-            white_eg += PAWN_EG + PAWN_EG_TABLE[idx];
+            white_mg += PAWN + PAWN_TABLE[idx];
+            white_eg += PAWN + PAWN_EG_TABLE[idx];
         }
         for square in piece_bb(board, Color::Black, Piece::Pawn) {
             let idx = mirror_index(square_index(square));
-            black_mg += PAWN_MG + PAWN_TABLE[idx];
-            black_eg += PAWN_EG + PAWN_EG_TABLE[idx];
+            black_mg += PAWN + PAWN_TABLE[idx];
+            black_eg += PAWN + PAWN_EG_TABLE[idx];
         }
 
         for square in piece_bb(board, Color::White, Piece::Knight) {
             let idx = square_index(square);
-            white_mg += KNIGHT_MG + KNIGHT_TABLE[idx];
-            white_eg += KNIGHT_EG + KNIGHT_EG_TABLE[idx];
+            white_mg += KNIGHT + KNIGHT_TABLE[idx];
+            white_eg += KNIGHT + KNIGHT_EG_TABLE[idx];
         }
         for square in piece_bb(board, Color::Black, Piece::Knight) {
             let idx = mirror_index(square_index(square));
-            black_mg += KNIGHT_MG + KNIGHT_TABLE[idx];
-            black_eg += KNIGHT_EG + KNIGHT_EG_TABLE[idx];
+            black_mg += KNIGHT + KNIGHT_TABLE[idx];
+            black_eg += KNIGHT + KNIGHT_EG_TABLE[idx];
         }
 
         for square in piece_bb(board, Color::White, Piece::Bishop) {
             let idx = square_index(square);
-            white_mg += BISHOP_MG + BISHOP_TABLE[idx];
-            white_eg += BISHOP_EG + BISHOP_EG_TABLE[idx];
+            white_mg += BISHOP + BISHOP_TABLE[idx];
+            white_eg += BISHOP + BISHOP_EG_TABLE[idx];
         }
         for square in piece_bb(board, Color::Black, Piece::Bishop) {
             let idx = mirror_index(square_index(square));
-            black_mg += BISHOP_MG + BISHOP_TABLE[idx];
-            black_eg += BISHOP_EG + BISHOP_EG_TABLE[idx];
+            black_mg += BISHOP + BISHOP_TABLE[idx];
+            black_eg += BISHOP + BISHOP_EG_TABLE[idx];
         }
 
         for square in piece_bb(board, Color::White, Piece::Rook) {
             let idx = square_index(square);
-            white_mg += ROOK_MG + ROOK_TABLE[idx];
-            white_eg += ROOK_EG + ROOK_EG_TABLE[idx];
+            white_mg += ROOK + ROOK_TABLE[idx];
+            white_eg += ROOK + ROOK_EG_TABLE[idx];
         }
         for square in piece_bb(board, Color::Black, Piece::Rook) {
             let idx = mirror_index(square_index(square));
-            black_mg += ROOK_MG + ROOK_TABLE[idx];
-            black_eg += ROOK_EG + ROOK_EG_TABLE[idx];
+            black_mg += ROOK + ROOK_TABLE[idx];
+            black_eg += ROOK + ROOK_EG_TABLE[idx];
         }
 
         for square in piece_bb(board, Color::White, Piece::Queen) {
             let idx = square_index(square);
-            white_mg += QUEEN_MG + QUEEN_TABLE[idx];
-            white_eg += QUEEN_EG + QUEEN_EG_TABLE[idx];
+            white_mg += QUEEN + QUEEN_TABLE[idx];
+            white_eg += QUEEN + QUEEN_EG_TABLE[idx];
         }
         for square in piece_bb(board, Color::Black, Piece::Queen) {
             let idx = mirror_index(square_index(square));
-            black_mg += QUEEN_MG + QUEEN_TABLE[idx];
-            black_eg += QUEEN_EG + QUEEN_EG_TABLE[idx];
+            black_mg += QUEEN + QUEEN_TABLE[idx];
+            black_eg += QUEEN + QUEEN_EG_TABLE[idx];
         }
 
         white_mg += king_position_score(board, Color::White, false);
@@ -2058,6 +1996,7 @@ fn move_is_legal(board: &Board, candidate: ChessMove) -> bool {
 fn in_check(board: &Board) -> bool {
     board.checkers().popcnt() > 0
 }
+
 
 fn is_castling(board: &Board, chess_move: ChessMove) -> bool {
     if board.piece_on(chess_move.get_source()) != Some(Piece::King) {

@@ -3,7 +3,11 @@
   "task": "rust-chess-engine",
   "workdir": "/home/tianhao/rust-chess-engine",
   "iteration": 1,
-  "phase": "modify_eval",
-  "best_elo": 0,
-  "current_plan": "Adopt sijun-bot's d8d8853e code as the base (2800 peak, avg ~2490), then implement a multi-pronged improvement: (1) Embed a compact opening book (~50 common opening lines) to save search time in the first 6-8 moves and avoid early blunders, (2) Add Probcut pruning \u2014 if a shallow search at reduced depth with an elevated beta shows score >= beta, prune the subtree, (3) Add a simple mop-up eval for KQ vs K / KR vs K endgames to drive opponent king to corner, (4) Improve history gravity back to Stockfish-style (sijun-bot removed it, but proper gravity prevents saturation), (5) Add contempt factor \u2014 slight negative draw score when ahead in material to avoid premature draws against weaker opponents. These changes target increasing AVERAGE strength across the 10-game gauntlet rather than hoping for lucky 10-0 sweeps."
+  "phase": "submit",
+  "best_elo": 2625.5,
+  "current_plan": "Adopt sijun-bot's d8d8853e code as the base (2800 peak, avg ~2490), then implement a multi-pronged improvement: (1) Embed a compact opening book (~50 common opening lines) to save search time in the first 6-8 moves and avoid early blunders, (2) Add Probcut pruning \u2014 if a shallow search at reduced depth with an elevated beta shows score >= beta, prune the subtree, (3) Add a simple mop-up eval for KQ vs K / KR vs K endgames to drive opponent king to corner, (4) Improve history gravity back to Stockfish-style (sijun-bot removed it, but proper gravity prevents saturation), (5) Add contempt factor \u2014 slight negative draw score when ahead in material to avoid premature draws against weaker opponents. These changes target increasing AVERAGE strength across the 10-game gauntlet rather than hoping for lucky 10-0 sweeps.",
+  "last_elo": 2625.5,
+  "last_valid": true,
+  "last_crashed": false,
+  "outcome": "keep"
 }

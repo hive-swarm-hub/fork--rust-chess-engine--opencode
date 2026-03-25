@@ -209,11 +209,12 @@ const CONTEMPT: i32 = 12;
 fn build_opening_book() -> HashMap<u64, &'static str> {
     let mut book = HashMap::new();
     // We build the book by replaying move sequences and recording hash -> next_move
+    // Each line is a sequence of moves; we record each intermediate position hash -> next move
     let lines: &[&[&str]] = &[
         // Italian Game / Giuoco Piano
         &["e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "f8c5", "c2c3", "g8f6", "d2d4"],
         // Ruy Lopez main line
-        &["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "a7a6", "f1a4", "g8f6", "e1g1"],
+        &["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "a7a6", "b5a4", "g8f6", "e1g1"],
         // Scotch Game
         &["e2e4", "e7e5", "g1f3", "b8c6", "d2d4", "e5d4", "f3d4"],
         // Queen's Gambit
@@ -246,37 +247,28 @@ fn build_opening_book() -> HashMap<u64, &'static str> {
         &["d2d4", "d7d5", "c2c4", "c7c6", "g1f3", "g8f6", "b1c3", "d5c4", "a2a4"],
         // Grunfeld
         &["d2d4", "g8f6", "c2c4", "g7g6", "b1c3", "d7d5", "c4d5", "f6d5", "e2e4"],
-        // White defaults from startpos
+        // Default opening moves
         &["e2e4"],
-        // After 1.e4 e5
         &["e2e4", "e7e5", "g1f3"],
-        // After 1.d4 d5
         &["d2d4", "d7d5", "c2c4"],
-        // After 1.d4 Nf6
         &["d2d4", "g8f6", "c2c4"],
     ];
 
     for line in lines {
         let mut board = Board::default();
         for (i, move_uci) in line.iter().enumerate() {
-            let hash = board.get_hash();
-            // Only record the move if we haven't already (first line wins)
-            if i < line.len() - 1 || line.len() == 1 {
-                // Record hash -> next move for all positions except the last
-                if i < line.len() - 1 {
-                    book.entry(hash).or_insert(line[i]);
-                }
-            }
             if let Ok(mv) = ChessMove::from_str(move_uci) {
-                board = board.make_move_new(mv);
+                if move_is_legal(&board, mv) {
+                    // Record this position -> this move (only if not already recorded)
+                    let hash = board.get_hash();
+                    book.entry(hash).or_insert(line[i]);
+                    board = board.make_move_new(mv);
+                } else {
+                    break; // Illegal move in sequence, stop this line
+                }
             } else {
                 break;
             }
-        }
-        // Also record the last position -> last move for single-move lines
-        if line.len() == 1 {
-            let hash = Board::default().get_hash();
-            book.entry(hash).or_insert(line[0]);
         }
     }
     book

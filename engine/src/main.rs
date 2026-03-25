@@ -767,8 +767,9 @@ impl RustAlphaBetaEngine {
         })
     }
 
-    fn should_parallelize_root(&self, depth: i32, move_count: usize) -> bool {
-        self.threads > 1 && self.deadline.is_some() && depth >= 6 && move_count >= 4
+    fn should_parallelize_root(&self, _depth: i32, _move_count: usize) -> bool {
+        // Disabled: TT clone overhead (48MB per worker) outweighs parallelism benefit
+        false
     }
 
     fn worker_clone(&self) -> Self {

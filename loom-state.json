@@ -1,0 +1,9 @@
+{
+  "status": "running",
+  "task": "rust-chess-engine",
+  "workdir": "/home/tianhao/rust-chess-engine",
+  "iteration": 1,
+  "phase": "modify_eval",
+  "best_elo": 0,
+  "current_plan": "Adopt jeebot's best code (2539.9 ELO, SHA 06a854fe) as our starting point. The first experiment should focus on improving time management and search efficiency since jeebot noted ~200 ELO variance in 10-game samples. Specifically: (1) Improve time management to use more time in complex/critical positions and less in simple ones \u2014 the current allocation is simplistic (time/20 + inc, capped at time/3). Add position complexity awareness based on eval instability and number of legal moves. (2) Add history-based LMR adjustments \u2014 the current LMR only reduces based on killer status and eval<=alpha, but doesn't use the history heuristic score to modulate reductions. Quiet moves with high history scores should be reduced less, moves with negative history more. (3) Improve aspiration window logic \u2014 currently uses fixed 40cp window with immediate full-window re-search on fail. Should use graduated widening (e.g., double the window on fail before going to full window). These are incremental search improvements that don't risk the aggressive pruning failures jeebot experienced."
+}

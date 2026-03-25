@@ -90,9 +90,30 @@ fn main() {
                 let alloc_ms = if let Some(mt) = movetime {
                     mt
                 } else {
+                    // Improved time management: consider game phase and position complexity
+                    let legal_moves = MoveGen::new_legal(&current_board).len() as u64;
+                    let phase = game_phase(&current_board);
+                    let in_check = current_board.checkers().popcnt() > 0;
+
+                    // Base allocation: fraction of remaining time
                     let base = time_ms / 20;
                     let with_inc = base + inc_ms;
-                    with_inc.min(time_ms / 3).max(100)
+                    let mut alloc = with_inc.min(time_ms / 3).max(100);
+
+                    // Allocate more time in complex middlegame positions (many legal moves)
+                    if legal_moves > 35 && phase > 10 {
+                        alloc = alloc * 13 / 10; // +30%
+                    } else if legal_moves < 10 {
+                        alloc = alloc * 7 / 10; // -30% for simple positions
+                    }
+
+                    // Allocate more time when in check (critical position)
+                    if in_check {
+                        alloc = alloc * 12 / 10; // +20%
+                    }
+
+                    // Don't exceed safety limit
+                    alloc.min(time_ms / 3).max(100)
                 };
 
                 let history = if move_history.is_empty() { None } else { Some(move_history.clone()) };
@@ -567,9 +588,10 @@ impl RustAlphaBetaEngine {
     ) -> Option<(i32, ChessMove)> {
         let mut alpha = -INFINITY;
         let mut beta = INFINITY;
+        let mut window = ASPIRATION_WINDOW;
         if let Some(score) = previous_score.filter(|_| depth >= 3) {
-            alpha = score - ASPIRATION_WINDOW;
-            beta = score + ASPIRATION_WINDOW;
+            alpha = score - window;
+            beta = score + window;
         }
 
         loop {
@@ -580,13 +602,26 @@ impl RustAlphaBetaEngine {
             };
 
             if alpha != -INFINITY && score <= alpha {
-                alpha = -INFINITY;
-                beta = INFINITY;
+                // Graduated widening: double the window before going full
+                window *= 2;
+                if window >= 400 {
+                    alpha = -INFINITY;
+                    beta = INFINITY;
+                } else {
+                    alpha = score - window;
+                    beta = previous_score.unwrap_or(score) + window;
+                }
                 continue;
             }
             if beta != INFINITY && score >= beta {
-                alpha = -INFINITY;
-                beta = INFINITY;
+                window *= 2;
+                if window >= 400 {
+                    alpha = -INFINITY;
+                    beta = INFINITY;
+                } else {
+                    alpha = previous_score.unwrap_or(score) - window;
+                    beta = score + window;
+                }
                 continue;
             }
             return Some((score, best_move));
@@ -1049,13 +1084,19 @@ impl RustAlphaBetaEngine {
                     if self.killer_moves.get(ply).map_or(false, |k| k[0] == Some(chess_move) || k[1] == Some(chess_move)) {
                         reduction = (reduction - 1).max(0);
                     }
+                    // History-based LMR: reduce less for moves with good history, more for bad
+                    let hist_score = self.history_heuristic[mk];
+                    if hist_score > 4000 {
+                        reduction = (reduction - 1).max(0);
+                    } else if hist_score < -4000 {
+                        reduction += 1;
+                    }
                     // Reduce more if not improving
                     if let Some(eval) = static_eval {
                         if eval <= alpha {
                             reduction += 1;
                         }
                     }
-                    let _ = mk; // suppress warning
                     search_depth = (search_depth - reduction).max(0);
                 }
 

@@ -68,7 +68,7 @@ fn main() {
                 let side = current_board.side_to_move();
                 let mut time_ms: u64 = 10000;
                 let mut inc_ms: u64 = 0;
-                let mut _movestogo: u32 = 30;
+                let mut movestogo: u32 = 0;
                 let mut max_depth: Option<i32> = None;
                 let mut movetime: Option<u64> = None;
 
@@ -79,7 +79,7 @@ fn main() {
                         "btime" => { if let Some(t) = tokens.get(i+1).and_then(|t| t.parse().ok()) { if side == Color::Black { time_ms = t; } } i += 2; }
                         "winc"  => { if let Some(t) = tokens.get(i+1).and_then(|t| t.parse().ok()) { if side == Color::White { inc_ms = t; } } i += 2; }
                         "binc"  => { if let Some(t) = tokens.get(i+1).and_then(|t| t.parse().ok()) { if side == Color::Black { inc_ms = t; } } i += 2; }
-                        "movestogo" => { _movestogo = tokens.get(i+1).and_then(|t| t.parse().ok()).unwrap_or(30); i += 2; }
+                        "movestogo" => { movestogo = tokens.get(i+1).and_then(|t| t.parse().ok()).unwrap_or(0); i += 2; }
                         "depth" => { max_depth = tokens.get(i+1).and_then(|t| t.parse().ok()); i += 2; }
                         "movetime" => { movetime = tokens.get(i+1).and_then(|t| t.parse().ok()); i += 2; }
                         "infinite" => { time_ms = 999_999_999; i += 1; }
@@ -89,7 +89,13 @@ fn main() {
 
                 let alloc_ms = if let Some(mt) = movetime {
                     mt
+                } else if movestogo > 0 {
+                    // Moves-to-go: allocate time/moves_remaining, keep safety margin
+                    let base = time_ms / (movestogo as u64 + 2);
+                    let with_inc = base + inc_ms * 3 / 4;
+                    with_inc.min(time_ms * 2 / 5).max(50)
                 } else {
+                    // Sudden death: use 1/20 of remaining
                     let base = time_ms / 20;
                     let with_inc = base + inc_ms;
                     with_inc.min(time_ms / 3).max(100)

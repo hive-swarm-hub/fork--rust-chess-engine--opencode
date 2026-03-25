@@ -2034,12 +2034,14 @@ fn late_move_reduction(depth: i32, move_count: usize) -> i32 {
 
 fn late_move_pruning_limit(depth: i32) -> usize {
     match depth {
-        d if d <= 1 => 5,
+        d if d <= 1 => 4,
         2 => 9,
         3 => 14,
         4 => 20,
         5 => 28,
         6 => 38,
+        7 => 50,
+        8 => 65,
         _ => usize::MAX,
     }
 }

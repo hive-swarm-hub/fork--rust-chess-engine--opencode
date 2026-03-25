@@ -68,7 +68,7 @@ fn main() {
                 let side = current_board.side_to_move();
                 let mut time_ms: u64 = 10000;
                 let mut inc_ms: u64 = 0;
-                let mut _movestogo: u32 = 30;
+                let mut movestogo: u32 = 0;
                 let mut max_depth: Option<i32> = None;
                 let mut movetime: Option<u64> = None;
 
@@ -79,7 +79,7 @@ fn main() {
                         "btime" => { if let Some(t) = tokens.get(i+1).and_then(|t| t.parse().ok()) { if side == Color::Black { time_ms = t; } } i += 2; }
                         "winc"  => { if let Some(t) = tokens.get(i+1).and_then(|t| t.parse().ok()) { if side == Color::White { inc_ms = t; } } i += 2; }
                         "binc"  => { if let Some(t) = tokens.get(i+1).and_then(|t| t.parse().ok()) { if side == Color::Black { inc_ms = t; } } i += 2; }
-                        "movestogo" => { _movestogo = tokens.get(i+1).and_then(|t| t.parse().ok()).unwrap_or(30); i += 2; }
+                        "movestogo" => { movestogo = tokens.get(i+1).and_then(|t| t.parse().ok()).unwrap_or(0); i += 2; }
                         "depth" => { max_depth = tokens.get(i+1).and_then(|t| t.parse().ok()); i += 2; }
                         "movetime" => { movetime = tokens.get(i+1).and_then(|t| t.parse().ok()); i += 2; }
                         "infinite" => { time_ms = 999_999_999; i += 1; }
@@ -89,9 +89,15 @@ fn main() {
 
                 let alloc_ms = if let Some(mt) = movetime {
                     mt
+                } else if movestogo > 0 {
+                    // Moves-to-go time control: use time/moves_remaining + increment
+                    let base = time_ms / (movestogo as u64 + 1);
+                    let with_inc = base + inc_ms * 3 / 4;
+                    with_inc.min(time_ms / 2).max(100)
                 } else {
+                    // Sudden death: use 1/20 of remaining + increment
                     let base = time_ms / 20;
-                    let with_inc = base + inc_ms;
+                    let with_inc = base + inc_ms * 3 / 4;
                     with_inc.min(time_ms / 3).max(100)
                 };
 
@@ -135,7 +141,8 @@ use chess::{
 const INFINITY: i32 = 1_000_000;
 const MATE_SCORE: i32 = 100_000;
 const DRAW_SCORE: i32 = 0;
-const ASPIRATION_WINDOW: i32 = 40;
+const CONTEMPT: i32 = 15; // Penalize draws — we have 5:1 time advantage
+const ASPIRATION_WINDOW: i32 = 25;
 const HISTORY_SIZE: usize = 1 << 16;
 const KILLER_PLY_CAPACITY: usize = 128;
 const MAX_ROOT_THREADS: usize = 8;
@@ -183,7 +190,7 @@ const MOBILITY_ROOK: i32 = 2;
 const MOBILITY_QUEEN: i32 = 1;
 
 const CONNECTED_ROOKS_BONUS: i32 = 10;
-const MINOR_BEHIND_PAWN_BONUS: i32 = 5;
+const _MINOR_BEHIND_PAWN_BONUS: i32 = 5;
 const THREAT_MINOR_BY_PAWN: i32 = 25;
 const THREAT_ROOK_BY_MINOR: i32 = 20;
 const THREAT_QUEEN_BY_MINOR: i32 = 30;
@@ -192,9 +199,9 @@ const THREAT_QUEEN_BY_ROOK: i32 = 25;
 const PASSED_PAWN_BONUS: [i32; 8] = [0, 8, 12, 20, 35, 60, 90, 0];
 const ENDGAME_PASSED_PAWN_BONUS: [i32; 8] = [0, 0, 4, 8, 16, 32, 56, 0];
 const SUPPORTED_PASSED_PAWN_BONUS: [i32; 8] = [0, 0, 3, 6, 12, 20, 32, 0];
-const REVERSE_FUTILITY_MARGIN: [i32; 4] = [0, 85, 150, 235];
-const FUTILITY_MARGIN: [i32; 4] = [0, 100, 170, 260];
-const RAZOR_MARGIN: [i32; 3] = [0, 250, 380];
+const REVERSE_FUTILITY_MARGIN: [i32; 5] = [0, 85, 150, 235, 330];
+const FUTILITY_MARGIN: [i32; 5] = [0, 100, 170, 260, 370];
+const RAZOR_MARGIN: [i32; 4] = [0, 250, 380, 520];
 
 const PAWN_TABLE: [i32; 64] = [
     0, 0, 0, 0, 0, 0, 0, 0, 5, 10, 10, -20, -20, 10, 10, 5, 5, -5, -10, 0, 0, -10, -5, 5, 0, 0, 0,
@@ -421,6 +428,7 @@ struct RustAlphaBetaEngine {
     capture_history: Vec<i16>,
     countermove: Vec<Option<ChessMove>>,  // indexed by previous move's move_key
     move_stack: Vec<Option<ChessMove>>,  // move played at each ply for countermove tracking
+    eval_stack: Vec<i32>,  // static eval at each ply for improving detection
     eval_cache: Vec<EvalCacheEntry>,
     pawn_cache: Vec<PawnCacheEntry>,
     deadline: Option<Instant>,
@@ -439,6 +447,7 @@ impl RustAlphaBetaEngine {
             capture_history: vec![0; HISTORY_SIZE * CAPTURE_HISTORY_PIECES],
             countermove: vec![None; HISTORY_SIZE],
             move_stack: vec![None; KILLER_PLY_CAPACITY],
+            eval_stack: vec![0; KILLER_PLY_CAPACITY],
             eval_cache: vec![EvalCacheEntry::default(); EVAL_CACHE_SIZE],
             pawn_cache: vec![PawnCacheEntry::default(); PAWN_CACHE_SIZE],
             deadline: None,
@@ -567,9 +576,10 @@ impl RustAlphaBetaEngine {
     ) -> Option<(i32, ChessMove)> {
         let mut alpha = -INFINITY;
         let mut beta = INFINITY;
+        let mut delta = ASPIRATION_WINDOW;
         if let Some(score) = previous_score.filter(|_| depth >= 3) {
-            alpha = score - ASPIRATION_WINDOW;
-            beta = score + ASPIRATION_WINDOW;
+            alpha = score - delta;
+            beta = score + delta;
         }
 
         loop {
@@ -580,13 +590,15 @@ impl RustAlphaBetaEngine {
             };
 
             if alpha != -INFINITY && score <= alpha {
-                alpha = -INFINITY;
-                beta = INFINITY;
+                // Fail low: widen alpha, keep beta
+                delta *= 2;
+                alpha = (score - delta).max(-INFINITY);
                 continue;
             }
             if beta != INFINITY && score >= beta {
-                alpha = -INFINITY;
-                beta = INFINITY;
+                // Fail high: widen beta, keep alpha
+                delta *= 2;
+                beta = (score + delta).min(INFINITY);
                 continue;
             }
             return Some((score, best_move));
@@ -776,6 +788,7 @@ impl RustAlphaBetaEngine {
             capture_history: self.capture_history.clone(),
             countermove: self.countermove.clone(),
             move_stack: self.move_stack.clone(),
+            eval_stack: self.eval_stack.clone(),
             eval_cache: self.eval_cache.clone(),
             pawn_cache: self.pawn_cache.clone(),
             deadline: self.deadline,
@@ -847,6 +860,14 @@ impl RustAlphaBetaEngine {
             return Some(self.evaluate(board));
         }
 
+        // Mate distance pruning
+        let mate_alpha = (-MATE_SCORE + ply as i32).max(alpha);
+        let mate_beta = (MATE_SCORE - ply as i32 - 1).min(beta);
+        if mate_alpha >= mate_beta {
+            return Some(mate_alpha);
+        }
+
+        let is_pv = beta - alpha > 1;
         let in_check_now = in_check(board);
         let mut effective_depth = depth;
         // Cap check extension to prevent infinite check sequences
@@ -868,16 +889,19 @@ impl RustAlphaBetaEngine {
         };
         let mut tt_move = tt_entry.and_then(|entry| entry.best_move);
 
-        if let Some(entry) = tt_entry {
-            if entry.depth >= effective_depth {
-                match entry.flag {
-                    EXACT => return Some(entry.score),
-                    LOWER_BOUND => alpha = alpha.max(entry.score),
-                    UPPER_BOUND => beta = beta.min(entry.score),
-                    _ => {}
-                }
-                if alpha >= beta {
-                    return Some(entry.score);
+        // TT cutoff (not in PV nodes to preserve PV)
+        if !is_pv {
+            if let Some(entry) = tt_entry {
+                if entry.depth >= effective_depth {
+                    match entry.flag {
+                        EXACT => return Some(entry.score),
+                        LOWER_BOUND => alpha = alpha.max(entry.score),
+                        UPPER_BOUND => beta = beta.min(entry.score),
+                        _ => {}
+                    }
+                    if alpha >= beta {
+                        return Some(entry.score);
+                    }
                 }
             }
         }
@@ -901,14 +925,21 @@ impl RustAlphaBetaEngine {
             None
         };
 
+        // Store static eval for improving detection
+        self.ensure_ply_capacity(ply + 2);
+        self.eval_stack[ply] = static_eval.unwrap_or(0);
+        let improving = !in_check_now && ply >= 2 && static_eval.unwrap_or(0) > self.eval_stack[ply.saturating_sub(2)];
+
         if let Some(eval) = static_eval {
-            if effective_depth <= 3
-                && eval >= beta + REVERSE_FUTILITY_MARGIN[effective_depth as usize]
+            // Reverse futility pruning — extended to depth 4, tighter when improving
+            if effective_depth <= 4
+                && eval >= beta + REVERSE_FUTILITY_MARGIN[effective_depth as usize] - if improving { 0 } else { 50 }
                 && beta < MATE_SCORE - 1_000
             {
                 return Some(eval);
             }
-            if effective_depth <= 2
+            // Razoring — extended to depth 3
+            if effective_depth <= 3
                 && eval + RAZOR_MARGIN[effective_depth as usize] <= alpha
                 && alpha > -MATE_SCORE + 1_000
             {
@@ -916,13 +947,18 @@ impl RustAlphaBetaEngine {
             }
         }
 
+        // Null move pruning with adaptive R
         if effective_depth >= 3
             && !in_check_now
             && has_non_pawn_material(board, board.side_to_move())
             && beta < MATE_SCORE - 1_000
         {
             if let Some(null_board) = board.null_move() {
-                let reduction = 2 + effective_depth / 3;
+                let mut reduction = 3 + effective_depth / 4;
+                // Increase reduction when eval is well above beta
+                if let Some(eval) = static_eval {
+                    reduction += ((eval - beta) / 200).clamp(0, 3);
+                }
                 let null_hash = board_hash(&null_board);
                 repetition.push(null_hash);
                 let search = self.negamax(
@@ -979,14 +1015,21 @@ impl RustAlphaBetaEngine {
 
             if is_quiet && !in_check_now && !gives_check_move {
                 if let Some(eval) = static_eval {
-                    if effective_depth <= 3
+                    // Futility pruning — extended to depth 4
+                    if effective_depth <= 4
                         && move_count > 1
                         && eval + FUTILITY_MARGIN[effective_depth as usize] <= alpha
                     {
                         continue;
                     }
                 }
-                if move_count > late_move_pruning_limit(effective_depth) {
+                // Late move pruning — tighter when not improving
+                let lmp_limit = if improving {
+                    late_move_pruning_limit(effective_depth)
+                } else {
+                    late_move_pruning_limit(effective_depth) * 2 / 3
+                };
+                if move_count > lmp_limit {
                     continue;
                 }
                 // SEE pruning for quiet moves at low depth
@@ -996,6 +1039,13 @@ impl RustAlphaBetaEngine {
                     continue;
                 }
                 searched_quiets.push(chess_move);
+            }
+            // SEE pruning for bad captures
+            if is_capture_move && !in_check_now && move_count > 1
+                && effective_depth <= 3
+                && static_exchange_eval(board, chess_move) < -100 * effective_depth
+            {
+                continue;
             }
             if let Some(victim) = capture_victim {
                 searched_captures.push((chess_move, victim));
@@ -1037,25 +1087,32 @@ impl RustAlphaBetaEngine {
                 }
 
                 let mut search_depth = effective_depth - 1;
-                if effective_depth >= 4
-                    && move_count > 3
+                if effective_depth >= 3
+                    && move_count > 2
                     && is_quiet
                     && !in_check_now
                     && !gives_check_move
                 {
                     let mut reduction = late_move_reduction(effective_depth, move_count);
-                    // Reduce less for countermoves and killers
-                    let mk = move_key(chess_move) as usize;
+                    // Reduce less in PV nodes
+                    if is_pv {
+                        reduction = (reduction - 1).max(0);
+                    }
+                    // Reduce less for killers
                     if self.killer_moves.get(ply).map_or(false, |k| k[0] == Some(chess_move) || k[1] == Some(chess_move)) {
                         reduction = (reduction - 1).max(0);
                     }
-                    // Reduce more if not improving
-                    if let Some(eval) = static_eval {
-                        if eval <= alpha {
-                            reduction += 1;
-                        }
+                    // Reduce more/less based on history
+                    let hist = self.history_heuristic[move_key(chess_move) as usize];
+                    if hist < -1000 {
+                        reduction += 1;
+                    } else if hist > 5000 {
+                        reduction = (reduction - 1).max(0);
                     }
-                    let _ = mk; // suppress warning
+                    // Reduce more if not improving
+                    if !improving {
+                        reduction += 1;
+                    }
                     search_depth = (search_depth - reduction).max(0);
                 }
 
@@ -1443,14 +1500,13 @@ impl RustAlphaBetaEngine {
     ) -> Option<i32> {
         match board.status() {
             BoardStatus::Checkmate => Some(-MATE_SCORE + ply as i32),
-            BoardStatus::Stalemate => Some(DRAW_SCORE),
+            BoardStatus::Stalemate => Some(-CONTEMPT),
             BoardStatus::Ongoing => {
                 let rep_count = repetition.count(board_hash(board));
                 if rep_count >= 3 {
-                    Some(DRAW_SCORE)
+                    Some(-CONTEMPT)
                 } else if rep_count >= 2 && ply > 0 {
-                    // 2-fold repetition in search = likely draw, treat as draw
-                    Some(DRAW_SCORE)
+                    Some(-CONTEMPT)
                 } else {
                     None
                 }
@@ -1522,10 +1578,7 @@ impl RustAlphaBetaEngine {
             }
         }
 
-        if gives_check(board, chess_move) {
-            score += 50_000;
-        }
-
+        // Castling bonus (cheap to detect)
         if is_castling(board, chess_move) {
             score += 10_000;
         }
@@ -1545,7 +1598,9 @@ impl RustAlphaBetaEngine {
 
     fn update_history(&mut self, chess_move: ChessMove, delta: i32) {
         let history = &mut self.history_heuristic[move_key(chess_move) as usize];
-        *history = (*history + delta).clamp(-HISTORY_LIMIT, HISTORY_LIMIT);
+        // Gravity-based update: history += delta - history * |delta| / LIMIT
+        let clamped_delta = delta.clamp(-HISTORY_LIMIT, HISTORY_LIMIT);
+        *history += clamped_delta - *history * clamped_delta.abs() / HISTORY_LIMIT;
     }
 
     fn update_capture_history(&mut self, chess_move: ChessMove, victim: Piece, delta: i32) {
@@ -1560,6 +1615,9 @@ impl RustAlphaBetaEngine {
         }
         if self.move_stack.len() < size {
             self.move_stack.resize(size, None);
+        }
+        if self.eval_stack.len() < size {
+            self.eval_stack.resize(size, 0);
         }
     }
 
@@ -1981,10 +2039,6 @@ fn move_is_legal(board: &Board, candidate: ChessMove) -> bool {
 
 fn in_check(board: &Board) -> bool {
     board.checkers().popcnt() > 0
-}
-
-fn gives_check(board: &Board, chess_move: ChessMove) -> bool {
-    in_check(&board.make_move_new(chess_move))
 }
 
 fn is_castling(board: &Board, chess_move: ChessMove) -> bool {

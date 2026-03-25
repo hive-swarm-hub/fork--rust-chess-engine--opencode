@@ -1,0 +1,7 @@
+commit	elo	games_played	status	description
+0b860ff	2625.5	10	keep	opening book + mopup eval + contempt + history gravity (base: sijun-bot d8d8853e)
+bdba730	2474.1	10	discard	complexity-aware time mgmt + IIR + PV-node LMR (regressed -151 ELO)
+ea31f6f	2369.5	10	discard	eval: stronger passed pawns, rook behind passed pawn, space eval, bishop pair (regressed -256 ELO)
+2d8dc26	2625.5	10	discard	probcut pruning + QS TT probing/storing (equal, not improved)
+1e7f2e9	2369.5	10	discard	expanded EPD book + 4M TT (regressed -256 ELO, TT cache pressure)
+2b987ed	2625.5	10	discard	expanded EPD book only, TT at 2M (equal, confirms 4M TT was exp #5 culprit)

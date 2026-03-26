@@ -1,0 +1,17 @@
+commit	elo	games_played	status	description
+a888d57	2508.1	215	discard	sync 68deb70b engine-only delta; failed local reproduction under fixed eval
+8420820	2509.1	206	discard	conditional repetition penalty only when materially winning
+5f664dc	2327.0	195	keep	baseline under new 40/20 vs 40/10 eval script
+fe4eeea	2397.1	206	keep	earlier next-depth cutoff when clearly winning under fast local eval
+0983df1	2403.0	201	keep	winning-position time banking threshold 300->200 on fast local eval
+8db668e	2299.4	208	discard	winning-position time banking threshold 200->100 overshot badly
+b75594d	2335.2	216	discard	winning-position time banking threshold 100->150 still too aggressive
+ab9f515	2328.0	188	discard	winning-position time banking threshold 150->250 lost the gain
+ca1b450	2351.9	192	discard	softening the 200cp skip multiplier from 0.85 to 0.9 regressed
+f4593d9	2289.5	175	discard	strengthening the 200cp skip multiplier to 0.8 regressed badly
+eca9cd5	2443.0	205	keep	extend LMP to depths 9-10 (d9=85 d10=110) on random-seed baseline
+36723cf	2323.6	208	discard	LMP d11-d12 over-pruned at deep search, regressed
+14bbc8b	2330.7	207	discard	extend futility+RFP+SEE-quiet pruning to depth<=5 regressed
+6f41373	2704.7	282	keep	Stockfish HalfKP NNUE (256x2-32-32-1) replacing HCE +261 ELO
+7bda94b	2692.7	252	discard	incremental NNUE accumulator (non-native CPU, within noise of baseline)
+1816534	2845.5	317	keep	lazy incremental NNUE + target-cpu=native AVX2 +141 ELO

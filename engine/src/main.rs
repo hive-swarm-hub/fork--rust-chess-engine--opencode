@@ -203,6 +203,7 @@ const RAZOR_MARGIN: [i32; 4] = [0, 230, 360, 500];
 
 // Contempt: slight penalty for draws when we likely have advantage
 const CONTEMPT: i32 = 0;
+const WINNING_REPETITION_PENALTY: i32 = 10;
 
 /// Build the opening book: maps position hash -> best move UCI string.
 /// These are strong opening moves from theory, covering common openings.
@@ -1588,13 +1589,13 @@ impl RustAlphaBetaEngine {
     ) -> Option<i32> {
         match board.status() {
             BoardStatus::Checkmate => Some(-MATE_SCORE + ply as i32),
-            BoardStatus::Stalemate => Some(-CONTEMPT), // Slight contempt: avoid stalemate
+            BoardStatus::Stalemate => Some(DRAW_SCORE),
             BoardStatus::Ongoing => {
                 let rep_count = repetition.count(board_hash(board));
                 if rep_count >= 3 {
-                    Some(-CONTEMPT) // Slight contempt: avoid repetition draws
+                    Some(repetition_draw_score(board))
                 } else if rep_count >= 2 && ply > 0 {
-                    Some(-CONTEMPT)
+                    Some(repetition_draw_score(board))
                 } else {
                     None
                 }
@@ -1781,6 +1782,26 @@ fn piece_value(piece: Piece) -> i32 {
         Piece::Rook => ROOK,
         Piece::Queen => QUEEN,
         Piece::King => 0,
+    }
+}
+
+fn material_advantage(board: &Board, color: Color) -> i32 {
+    let mut ours = 0;
+    let mut theirs = 0;
+    for piece in [Piece::Pawn, Piece::Knight, Piece::Bishop, Piece::Rook, Piece::Queen] {
+        let value = piece_value(piece);
+        ours += (piece_bb(board, color, piece).popcnt() as i32) * value;
+        theirs += (piece_bb(board, !color, piece).popcnt() as i32) * value;
+    }
+    ours - theirs
+}
+
+fn repetition_draw_score(board: &Board) -> i32 {
+    let side = board.side_to_move();
+    if material_advantage(board, side) >= 300 && has_non_pawn_material(board, side) {
+        -WINNING_REPETITION_PENALTY
+    } else {
+        DRAW_SCORE
     }
 }
 

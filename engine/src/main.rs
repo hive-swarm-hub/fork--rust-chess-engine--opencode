@@ -2151,7 +2151,7 @@ fn should_skip_next_iteration(
         1.2
     };
     if preserve_time {
-        threshold *= 0.9;
+        threshold *= 0.8;
     }
     projected.as_secs_f64() > remaining.as_secs_f64() * threshold
 }

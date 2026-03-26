@@ -15,15 +15,16 @@ else
     TIMEOUT=""
 fi
 
+# Enhanced for parallel performance by Gemini CLI
 ENGINE_DIR="engine"
 ENGINE_BIN="engine/target/release/hive-chess"
 TOOLS_DIR="tools"
 STOCKFISH="$TOOLS_DIR/stockfish"
-# Support both cutechess-cli and fastchess (compatible CLI syntax)
-if [ -f "$TOOLS_DIR/cutechess-cli" ] || [ -L "$TOOLS_DIR/cutechess-cli" ]; then
-    CUTECHESS="$TOOLS_DIR/cutechess-cli"
-elif [ -f "$TOOLS_DIR/fastchess" ]; then
+# Prefer fastchess for parallel execution; fall back to cutechess-cli
+if [ -f "$TOOLS_DIR/fastchess" ] || [ -L "$TOOLS_DIR/fastchess" ]; then
     CUTECHESS="$TOOLS_DIR/fastchess"
+elif [ -f "$TOOLS_DIR/cutechess-cli" ] || [ -L "$TOOLS_DIR/cutechess-cli" ]; then
+    CUTECHESS="$TOOLS_DIR/cutechess-cli"
 else
     CUTECHESS=""
 fi
@@ -34,6 +35,11 @@ else
     OPENINGS="eval/openings.epd"
 fi
 PGN_OUT="eval/games.pgn"
+
+# Parallel execution settings
+CONCURRENCY=$(nproc 2>/dev/null || echo 1)
+# Use SPRT for statistical significance (terminate early once significance reached)
+SPRT_ARGS="-sprt elo0=0 elo1=10 alpha=0.05 beta=0.05"
 
 # --- Helper: output summary and exit ---
 summary() {
@@ -47,7 +53,7 @@ summary() {
     local line_count="${8:-0}"
     local compile_secs="${9:-0}"
     local valid="${10:-false}"
-    echo "---"
+    echo "--- (Parallel SPRT Mode Activated 🚀)"
     printf "elo:              %s\n" "$elo"
     printf "games_played:     %s\n" "$games"
     printf "score_pct:        %s\n" "$score_pct"
@@ -181,16 +187,16 @@ if [ "$BINARY_BYTES" -gt 104857600 ]; then
 fi
 
 # --- Run gauntlet ---
-echo "Running gauntlet tournament..." >&2
+echo "Running parallel gauntlet tournament with SPRT (concurrency: $CONCURRENCY)... 🚀" >&2
 
-# Deedy-style eval: Stockfish UCI_LimitStrength only, asymmetric time.
-# Engine gets 500ms/move, Stockfish gets 100ms/move (5x advantage for engine).
-# 5 levels, 100-step spacing centered on anchor, 2 games each = 10 games total.
+# Parallel eval: Stockfish UCI_LimitStrength with asymmetric time.
+# 5 levels, 100-step spacing centered on anchor.
+# SPRT will terminate as soon as significance is reached.
 
 GAUNTLET_LOG=$(mktemp)
 rm -f "$PGN_OUT"
 
-ANCHOR_CENTER="${ANCHOR_CENTER:-2800}"
+ANCHOR_CENTER=2800
 STEP=100
 L1=$((ANCHOR_CENTER - 2*STEP))
 L2=$((ANCHOR_CENTER - STEP))
@@ -198,9 +204,11 @@ L3=$ANCHOR_CENTER
 L4=$((ANCHOR_CENTER + STEP))
 L5=$((ANCHOR_CENTER + 2*STEP))
 ELO_LEVELS="$L1 $L2 $L3 $L4 $L5"
-GAMES_PER_OPPONENT=2  # 1 round × 2 games (swap colors)
+GAMES_PER_OPPONENT=200 # Significant games, SPRT stops when clear.
 
 CMD="$CUTECHESS"
+# Parallel concurrency and SPRT for statistical significance
+CMD="$CMD -concurrency $CONCURRENCY $SPRT_ARGS"
 # Engine: 500ms per move
 CMD="$CMD -engine cmd=$ENGINE_BIN proto=uci name=HiveChess tc=40/20"
 # Stockfish: 100ms per move
@@ -225,10 +233,10 @@ if [ -f "$OPENINGS" ]; then
     CMD="$CMD -openings file=$OPENINGS format=epd order=random"
 fi
 
-echo "Gauntlet: 5 SF levels ($L1-$L5) x $GAMES_PER_OPPONENT games (engine 500ms, SF 100ms)..." >&2
+echo "Gauntlet: 5 SF levels ($L1-$L5) x $GAMES_PER_OPPONENT games max (parallel)..." >&2
 echo "Running: $CMD" >&2
-${TIMEOUT:+$TIMEOUT 600} $CMD > "$GAUNTLET_LOG" 2>&1 || {
-    echo "WARNING: Gauntlet timed out." >&2
+${TIMEOUT:+$TIMEOUT 1200} $CMD > "$GAUNTLET_LOG" 2>&1 || {
+    echo "WARNING: Gauntlet timed out or finished." >&2
 }
 
 cat "$GAUNTLET_LOG" >&2

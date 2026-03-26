@@ -63,9 +63,10 @@ Terminates early once a result is statistically significant.
 | Phase | ELO Range | Key Techniques |
 |-------|-----------|----------------|
 | Baseline | ~2435 | TT, LMR, null move, PVS, killer moves, SEE, PSTs, king safety |
-| Core | 1500-2400 | Transposition table, MVV-LVA, killer moves, null move pruning, LMR |
-| Evaluation | 2400-3000 | Piece-square tables, pawn structure, king safety, mobility |
-| Elite | 3000+ | NNUE evaluation, Singular extensions, Multi-threaded search |
+| Core | 1500-2000 | Transposition table, MVV-LVA, killer moves, null move pruning, LMR |
+| Evaluation | 2000-2400 | Piece-square tables, pawn structure, king safety, mobility |
+| Advanced | 2400-2800 | NNUE evaluation, PVS, singular extensions, Syzygy tablebases |
+| Elite | 2800+ | Multi-threaded search, SPSA tuning, NNUE self-play training |
 
 ## Anti-Cheat
 

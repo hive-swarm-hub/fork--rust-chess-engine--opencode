@@ -146,6 +146,7 @@ const MAX_PAWN_CACHE_ENTRIES: usize = 200_000;
 const HISTORY_LIMIT: i32 = 32_000;
 const CAPTURE_HISTORY_PIECES: usize = 6;
 const CAPTURE_HISTORY_LIMIT: i32 = 16_000;
+const COUNTERMOVE_BONUS: i32 = 200_000;
 const MAX_TIME_SEARCH_DEPTH: i32 = 64;
 const PHASE_TOTAL: i32 = 24;
 const SEE_PRUNE_MARGIN: i32 = 80;
@@ -310,6 +311,8 @@ struct RustAlphaBetaEngine {
     killer_moves: Vec<[Option<ChessMove>; 2]>,
     history_heuristic: Vec<i32>,
     capture_history: Vec<i16>,
+    countermove: Vec<Option<ChessMove>>,
+    move_stack: Vec<Option<ChessMove>>,
     eval_cache: HashMap<u64, i32>,
     pawn_cache: HashMap<u64, PawnCacheEntry>,
     deadline: Option<Instant>,
@@ -326,6 +329,8 @@ impl RustAlphaBetaEngine {
             killer_moves: vec![[None, None]; KILLER_PLY_CAPACITY],
             history_heuristic: vec![0; HISTORY_SIZE],
             capture_history: vec![0; HISTORY_SIZE * CAPTURE_HISTORY_PIECES],
+            countermove: vec![None; HISTORY_SIZE],
+            move_stack: vec![None; KILLER_PLY_CAPACITY],
             eval_cache: HashMap::new(),
             pawn_cache: HashMap::new(),
             deadline: None,
@@ -661,6 +666,8 @@ impl RustAlphaBetaEngine {
             killer_moves: self.killer_moves.clone(),
             history_heuristic: self.history_heuristic.clone(),
             capture_history: self.capture_history.clone(),
+            countermove: self.countermove.clone(),
+            move_stack: self.move_stack.clone(),
             eval_cache: self.eval_cache.clone(),
             pawn_cache: self.pawn_cache.clone(),
             deadline: self.deadline,
@@ -879,10 +886,15 @@ impl RustAlphaBetaEngine {
                     && !in_check_now
                     && !gives_check_move
                 {
-                    let reduction = late_move_reduction(effective_depth, move_count);
+                    let mut reduction = late_move_reduction(effective_depth, move_count);
+                    if self.is_countermove(chess_move, ply) {
+                        reduction = (reduction - 1).max(0);
+                    }
                     search_depth = (search_depth - reduction).max(0);
                 }
 
+                self.ensure_ply_capacity(ply + 2);
+                self.move_stack[ply] = Some(chess_move);
                 let mut score = -self.negamax(
                     &child,
                     search_depth,
@@ -928,6 +940,11 @@ impl RustAlphaBetaEngine {
                 if is_quiet {
                     self.record_killer(chess_move, ply);
                     self.update_history(chess_move, bonus);
+                    if ply > 0 {
+                        if let Some(prev_move) = self.move_stack.get(ply - 1).copied().flatten() {
+                            self.countermove[move_key(prev_move) as usize] = Some(chess_move);
+                        }
+                    }
                     for previous in searched_quiets.iter().copied() {
                         if previous != chess_move {
                             self.update_history(previous, -bonus);
@@ -1274,6 +1291,10 @@ impl RustAlphaBetaEngine {
             }
         }
 
+        if self.is_countermove(chess_move, ply) {
+            score += COUNTERMOVE_BONUS;
+        }
+
         if gives_check(board, chess_move) {
             score += 50_000;
         }
@@ -1306,9 +1327,29 @@ impl RustAlphaBetaEngine {
         *history = updated.clamp(-CAPTURE_HISTORY_LIMIT, CAPTURE_HISTORY_LIMIT) as i16;
     }
 
+    fn is_countermove(&self, chess_move: ChessMove, ply: usize) -> bool {
+        if ply == 0 {
+            return false;
+        }
+
+        self.move_stack
+            .get(ply - 1)
+            .copied()
+            .flatten()
+            .and_then(|prev_move| {
+                self.countermove
+                    .get(move_key(prev_move) as usize)
+                    .copied()
+                    .flatten()
+            }) == Some(chess_move)
+    }
+
     fn ensure_ply_capacity(&mut self, size: usize) {
         if self.killer_moves.len() < size {
             self.killer_moves.resize(size, [None, None]);
+        }
+        if self.move_stack.len() < size {
+            self.move_stack.resize(size, None);
         }
     }
 

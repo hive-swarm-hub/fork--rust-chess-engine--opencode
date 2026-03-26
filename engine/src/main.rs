@@ -591,6 +591,7 @@ impl RustAlphaBetaEngine {
         let mut previous_iteration_nodes: Option<u64> = None;
         let mut last_iteration_time: Option<Duration> = None;
         let mut previous_iteration_time: Option<Duration> = None;
+        let mut best_move_stable_count: u32 = 0;
 
         for current_depth in 1..=target_depth {
             if completed_depth > 0
@@ -604,6 +605,7 @@ impl RustAlphaBetaEngine {
                     last_iteration_time,
                     previous_iteration_time,
                     best_score,
+                    best_move_stable_count,
                 )
             {
                 break;
@@ -627,6 +629,11 @@ impl RustAlphaBetaEngine {
             previous_iteration_time = last_iteration_time;
             last_iteration_nodes = Some(iteration_nodes);
             last_iteration_time = Some(iteration_time);
+            if best_move == Some(candidate) {
+                best_move_stable_count += 1;
+            } else {
+                best_move_stable_count = 0;
+            }
             best_score = score;
             best_move = Some(candidate);
             completed_depth = current_depth;
@@ -2078,6 +2085,7 @@ fn should_skip_next_iteration(
     last_time: Option<Duration>,
     previous_time: Option<Duration>,
     best_score: i32,
+    best_move_stable_count: u32,
 ) -> bool {
     if best_score.abs() >= MATE_SCORE - 512 {
         return true;
@@ -2101,6 +2109,11 @@ fn should_skip_next_iteration(
 
     if next_depth <= 4 {
         return false;
+    }
+
+    // If the PV is stable late in the budget, save time for harder positions.
+    if best_move_stable_count >= 4 && elapsed.mul_f64(2.5) >= budget {
+        return true;
     }
 
     if elapsed.mul_f64(2.0) <= budget {

@@ -140,7 +140,7 @@ use chess::{
 const INFINITY: i32 = 1_000_000;
 const MATE_SCORE: i32 = 100_000;
 const DRAW_SCORE: i32 = 0;
-const ASPIRATION_WINDOW: i32 = 40;
+const ASPIRATION_WINDOW: i32 = 30;
 const HISTORY_SIZE: usize = 1 << 16;
 const KILLER_PLY_CAPACITY: usize = 128;
 const MAX_ROOT_THREADS: usize = 8;
@@ -202,7 +202,7 @@ const FUTILITY_MARGIN: [i32; 5] = [0, 90, 155, 245, 340];
 const RAZOR_MARGIN: [i32; 4] = [0, 230, 360, 500];
 
 // Contempt: slight penalty for draws when we likely have advantage
-const CONTEMPT: i32 = 12;
+const CONTEMPT: i32 = 0;
 
 /// Build the opening book: maps position hash -> best move UCI string.
 /// These are strong opening moves from theory, covering common openings.
@@ -981,7 +981,7 @@ impl RustAlphaBetaEngine {
             let entry = self.tt[tt_idx];
             if entry.key == tt_key { Some(entry) } else { None }
         };
-        let mut tt_move = tt_entry.and_then(|entry| entry.best_move);
+        let tt_move = tt_entry.and_then(|entry| entry.best_move);
 
         if let Some(entry) = tt_entry {
             if entry.depth >= effective_depth {
@@ -997,17 +997,9 @@ impl RustAlphaBetaEngine {
             }
         }
 
-        if tt_move.is_none() && effective_depth >= 6 && !in_check_now {
-            let iid_depth = if effective_depth >= 8 {
-                effective_depth - 3
-            } else {
-                effective_depth - 2
-            };
-            if iid_depth > 0 {
-                let _ = self.negamax(board, iid_depth, alpha, beta, ply, repetition);
-                let entry = &self.tt[tt_idx];
-                tt_move = if entry.key == tt_key { entry.best_move } else { None };
-            }
+        // IIR: reduce depth by 1 when no TT move found instead of paying for IID.
+        if tt_move.is_none() && effective_depth >= 4 && !in_check_now {
+            effective_depth -= 1;
         }
 
         let static_eval = if !in_check_now {

@@ -138,7 +138,7 @@ use chess::{
     BitBoard, Board, BoardStatus, ChessMove, Color, File, MoveGen, Piece, Rank, Square,
 };
 
-use nnue::stockfish::halfkp::{SfHalfKpFullModel, SfHalfKpState, scale_nn_to_centipawns, IL_OUT};
+use nnue::stockfish::halfkp::{SfHalfKpFullModel, SfHalfKpState, IL_OUT, scale_nn_to_centipawns};
 use binread::BinRead;
 
 const NNUE_WEIGHTS: &[u8] = include_bytes!("nn.nnue");
@@ -149,170 +149,175 @@ fn load_nnue() -> SfHalfKpFullModel {
     SfHalfKpFullModel::read(&mut cursor).expect("NNUE load failed")
 }
 
-#[inline(always)]
-fn to_nnue_piece(p: Piece) -> nnue::Piece {
-    match p {
-        Piece::Pawn   => nnue::Piece::Pawn,
-        Piece::Knight => nnue::Piece::Knight,
-        Piece::Bishop => nnue::Piece::Bishop,
-        Piece::Rook   => nnue::Piece::Rook,
-        Piece::Queen  => nnue::Piece::Queen,
-        Piece::King   => unreachable!(),
+fn nnue_evaluate(board: &Board) -> i32 {
+    let full = NNUE_MODEL.get_or_init(load_nnue);
+    let model = &full.model;
+
+    // Map chess::Square to nnue::Square (both A1=0, H8=63)
+    let wk_sq = board.king_square(Color::White);
+    let bk_sq = board.king_square(Color::Black);
+    let wk = nnue::Square::from_index(wk_sq.to_index());
+    let bk = nnue::Square::from_index(bk_sq.to_index());
+
+    let mut state = model.new_state(wk, bk);
+
+    for &chess_color in &[Color::White, Color::Black] {
+        let nc = if chess_color == Color::White { nnue::Color::White } else { nnue::Color::Black };
+        for &chess_piece in &[Piece::Pawn, Piece::Knight, Piece::Bishop, Piece::Rook, Piece::Queen] {
+            let np = match chess_piece {
+                Piece::Pawn   => nnue::Piece::Pawn,
+                Piece::Knight => nnue::Piece::Knight,
+                Piece::Bishop => nnue::Piece::Bishop,
+                Piece::Rook   => nnue::Piece::Rook,
+                Piece::Queen  => nnue::Piece::Queen,
+                Piece::King   => unreachable!(),
+            };
+            let bb = board.pieces(chess_piece) & board.color_combined(chess_color);
+            for sq in bb {
+                let ns = nnue::Square::from_index(sq.to_index());
+                for &acc_color in &nnue::Color::ALL {
+                    state.add(acc_color, np, nc, ns);
+                }
+            }
+        }
     }
+
+    let stm = if board.side_to_move() == Color::White { nnue::Color::White } else { nnue::Color::Black };
+    scale_nn_to_centipawns(state.activate(stm)[0])
 }
 
-#[inline(always)]
-fn to_nnue_color(c: Color) -> nnue::Color {
-    if c == Color::White { nnue::Color::White } else { nnue::Color::Black }
-}
-
-/// Incrementally-updatable accumulator for HalfKP NNUE.
-/// `sides[0]` = white-king perspective, `sides[1]` = black-king perspective.
-/// `raw_kings[i]` = un-rotated king square for each side.
+// Incremental NNUE accumulator for per-ply caching.
+// raw_kings: [wk_raw, bk_raw] — both un-rotated chess::Square indices.
+// SfHalfKpState::feature_index handles Black rotation internally.
 #[derive(Clone, Copy)]
 struct NNUEAcc {
-    sides: [[i16; IL_OUT]; 2],
-    raw_kings: [nnue::Square; 2],
+    sides: [[i16; IL_OUT]; 2],     // [white_persp, black_persp]
+    raw_kings: [u8; 2],            // raw square index: [wk, bk]
 }
 
 impl NNUEAcc {
     fn zeroed() -> Self {
-        NNUEAcc {
-            sides: [[0i16; IL_OUT]; 2],
-            raw_kings: [nnue::Square::A1; 2],
-        }
+        NNUEAcc { sides: [[0i16; IL_OUT]; 2], raw_kings: [0u8; 2] }
     }
 
-    /// Build accumulator from scratch for a given board.
-    /// `feature_index(Black, king_raw, ...)` expects un-rotated king and rotates internally.
     fn from_board(full: &SfHalfKpFullModel, board: &Board) -> Self {
-        let model = &full.model;
-        // raw = un-rotated square index (same as chess::Square index)
-        let wk_raw = nnue::Square::from_index(board.king_square(Color::White).to_index());
-        let bk_raw = nnue::Square::from_index(board.king_square(Color::Black).to_index());
-
-        let mut sides = [[0i16; IL_OUT]; 2];
-        sides[0] = model.transformer.input_layer.biases;
-        sides[1] = model.transformer.input_layer.biases;
-
-        for &cc in &[Color::White, Color::Black] {
-            let nc = to_nnue_color(cc);
-            for &cp in &[Piece::Pawn, Piece::Knight, Piece::Bishop, Piece::Rook, Piece::Queen] {
-                let np = to_nnue_piece(cp);
-                let bb = board.pieces(cp) & board.color_combined(cc);
+        let wk = board.king_square(Color::White);
+        let bk = board.king_square(Color::Black);
+        let wk_raw = nnue::Square::from_index(wk.to_index());
+        let bk_raw = nnue::Square::from_index(bk.to_index());
+        let mut acc = NNUEAcc {
+            sides: [[0i16; IL_OUT]; 2],
+            raw_kings: [wk.to_index() as u8, bk.to_index() as u8],
+        };
+        // Initialize with biases
+        for color_idx in 0..2 {
+            full.model.transformer.input_layer.empty(&mut acc.sides[color_idx]);
+        }
+        // Add all non-king pieces to both perspectives
+        for &chess_color in &[Color::White, Color::Black] {
+            let nc = if chess_color == Color::White { nnue::Color::White } else { nnue::Color::Black };
+            for &chess_piece in &[Piece::Pawn, Piece::Knight, Piece::Bishop, Piece::Rook, Piece::Queen] {
+                let np = match chess_piece {
+                    Piece::Pawn => nnue::Piece::Pawn, Piece::Knight => nnue::Piece::Knight,
+                    Piece::Bishop => nnue::Piece::Bishop, Piece::Rook => nnue::Piece::Rook,
+                    Piece::Queen => nnue::Piece::Queen, Piece::King => unreachable!(),
+                };
+                let bb = board.pieces(chess_piece) & board.color_combined(chess_color);
                 for sq in bb {
                     let ns = nnue::Square::from_index(sq.to_index());
-                    // Pass raw king positions; feature_index handles rotation for black
-                    let feat_w = SfHalfKpState::feature_index(nnue::Color::White, wk_raw, np, nc, ns);
-                    let feat_b = SfHalfKpState::feature_index(nnue::Color::Black, bk_raw, np, nc, ns);
-                    model.transformer.input_layer.add(feat_w, &mut sides[0]);
-                    model.transformer.input_layer.add(feat_b, &mut sides[1]);
+                    SfHalfKpState::add_to_raw(&full.model.transformer, &mut acc.sides[0], nnue::Color::White, wk_raw, np, nc, ns);
+                    SfHalfKpState::add_to_raw(&full.model.transformer, &mut acc.sides[1], nnue::Color::Black, bk_raw, np, nc, ns);
                 }
             }
         }
-        NNUEAcc { sides, raw_kings: [wk_raw, bk_raw] }
+        acc
     }
 
-    fn refresh_perspective(
-        model: &nnue::stockfish::halfkp::SfHalfKpModel,
-        acc_side: &mut [i16; IL_OUT],
-        perspective: nnue::Color,
-        king_raw: nnue::Square,
-        board: &Board,
-    ) {
-        *acc_side = model.transformer.input_layer.biases;
-        for &cc in &[Color::White, Color::Black] {
-            let nc = to_nnue_color(cc);
-            for &cp in &[Piece::Pawn, Piece::Knight, Piece::Bishop, Piece::Rook, Piece::Queen] {
-                let np = to_nnue_piece(cp);
-                let bb = board.pieces(cp) & board.color_combined(cc);
+    fn refresh_perspective(full: &SfHalfKpFullModel, side: &mut [i16; IL_OUT], persp: nnue::Color, king_raw: nnue::Square, board: &Board) {
+        full.model.transformer.input_layer.empty(side);
+        for &chess_color in &[Color::White, Color::Black] {
+            let nc = if chess_color == Color::White { nnue::Color::White } else { nnue::Color::Black };
+            for &chess_piece in &[Piece::Pawn, Piece::Knight, Piece::Bishop, Piece::Rook, Piece::Queen] {
+                let np = match chess_piece {
+                    Piece::Pawn => nnue::Piece::Pawn, Piece::Knight => nnue::Piece::Knight,
+                    Piece::Bishop => nnue::Piece::Bishop, Piece::Rook => nnue::Piece::Rook,
+                    Piece::Queen => nnue::Piece::Queen, Piece::King => unreachable!(),
+                };
+                let bb = board.pieces(chess_piece) & board.color_combined(chess_color);
                 for sq in bb {
                     let ns = nnue::Square::from_index(sq.to_index());
-                    let feat = SfHalfKpState::feature_index(perspective, king_raw, np, nc, ns);
-                    model.transformer.input_layer.add(feat, acc_side);
+                    SfHalfKpState::add_to_raw(&full.model.transformer, side, persp, king_raw, np, nc, ns);
                 }
             }
         }
     }
 
-    fn diff_perspective(
-        model: &nnue::stockfish::halfkp::SfHalfKpModel,
-        acc_side: &mut [i16; IL_OUT],
-        perspective: nnue::Color,
-        king_raw: nnue::Square,
-        old_board: &Board,
-        new_board: &Board,
-    ) {
-        // Scan all squares to find what changed
+    fn diff_perspective(full: &SfHalfKpFullModel, side: &mut [i16; IL_OUT], persp: nnue::Color, king_raw: nnue::Square, old_board: &Board, new_board: &Board) {
+        // Find squares where occupancy or color changed
         let changed = old_board.combined() ^ new_board.combined();
-        let changed2 = (old_board.pieces(Piece::King) ^ new_board.pieces(Piece::King)) // king moved
-            | (old_board.color_combined(Color::White) ^ new_board.color_combined(Color::White)); // promotion
+        let changed2 = (old_board.pieces(Piece::King) ^ new_board.pieces(Piece::King))
+            | (old_board.color_combined(Color::White) ^ new_board.color_combined(Color::White));
         let all_changed = changed | changed2;
         for sq in all_changed {
-            let sq_idx = sq.to_index();
-            let ns = nnue::Square::from_index(sq_idx);
             let old_p = old_board.piece_on(sq);
             let old_c = old_board.color_on(sq);
             let new_p = new_board.piece_on(sq);
             let new_c = new_board.color_on(sq);
             if old_p != new_p || old_c != new_c {
-                if let (Some(pc), Some(cc)) = (old_p, old_c) {
-                    if pc != Piece::King {
-                        let feat = SfHalfKpState::feature_index(perspective, king_raw, to_nnue_piece(pc), to_nnue_color(cc), ns);
-                        model.transformer.input_layer.sub(feat, acc_side);
+                if let (Some(p), Some(c)) = (old_p, old_c) {
+                    if p != Piece::King {
+                        let np = match p { Piece::Pawn => nnue::Piece::Pawn, Piece::Knight => nnue::Piece::Knight, Piece::Bishop => nnue::Piece::Bishop, Piece::Rook => nnue::Piece::Rook, Piece::Queen => nnue::Piece::Queen, Piece::King => unreachable!() };
+                        let nc = if c == Color::White { nnue::Color::White } else { nnue::Color::Black };
+                        let ns = nnue::Square::from_index(sq.to_index());
+                        SfHalfKpState::sub_from_raw(&full.model.transformer, side, persp, king_raw, np, nc, ns);
                     }
                 }
-                if let (Some(pc), Some(cc)) = (new_p, new_c) {
-                    if pc != Piece::King {
-                        let feat = SfHalfKpState::feature_index(perspective, king_raw, to_nnue_piece(pc), to_nnue_color(cc), ns);
-                        model.transformer.input_layer.add(feat, acc_side);
+                if let (Some(p), Some(c)) = (new_p, new_c) {
+                    if p != Piece::King {
+                        let np = match p { Piece::Pawn => nnue::Piece::Pawn, Piece::Knight => nnue::Piece::Knight, Piece::Bishop => nnue::Piece::Bishop, Piece::Rook => nnue::Piece::Rook, Piece::Queen => nnue::Piece::Queen, Piece::King => unreachable!() };
+                        let nc = if c == Color::White { nnue::Color::White } else { nnue::Color::Black };
+                        let ns = nnue::Square::from_index(sq.to_index());
+                        SfHalfKpState::add_to_raw(&full.model.transformer, side, persp, king_raw, np, nc, ns);
                     }
                 }
             }
         }
     }
 
-    /// Compute child accumulator incrementally from parent + board diff.
     fn make_child(full: &SfHalfKpFullModel, parent: &NNUEAcc, old_board: &Board, new_board: &Board) -> Self {
-        let model = &full.model;
-        let new_wk_raw = nnue::Square::from_index(new_board.king_square(Color::White).to_index());
-        let new_bk_raw = nnue::Square::from_index(new_board.king_square(Color::Black).to_index());
+        let new_wk = new_board.king_square(Color::White);
+        let new_bk = new_board.king_square(Color::Black);
+        let wk_raw = nnue::Square::from_index(new_wk.to_index());
+        let bk_raw = nnue::Square::from_index(new_bk.to_index());
+        let wk_moved = new_wk.to_index() != parent.raw_kings[0] as usize;
+        let bk_moved = new_bk.to_index() != parent.raw_kings[1] as usize;
 
-        let wk_moved = new_wk_raw != parent.raw_kings[0];
-        let bk_moved = new_bk_raw != parent.raw_kings[1];
-
-        let mut child = *parent;
-        child.raw_kings[0] = new_wk_raw;
-        child.raw_kings[1] = new_bk_raw;
-
-        // White perspective
+        let mut child = NNUEAcc {
+            sides: parent.sides,
+            raw_kings: [new_wk.to_index() as u8, new_bk.to_index() as u8],
+        };
         if wk_moved {
-            Self::refresh_perspective(model, &mut child.sides[0], nnue::Color::White, new_wk_raw, new_board);
+            Self::refresh_perspective(full, &mut child.sides[0], nnue::Color::White, wk_raw, new_board);
         } else {
-            Self::diff_perspective(model, &mut child.sides[0], nnue::Color::White, parent.raw_kings[0], old_board, new_board);
+            Self::diff_perspective(full, &mut child.sides[0], nnue::Color::White, wk_raw, old_board, new_board);
         }
-
-        // Black perspective
         if bk_moved {
-            Self::refresh_perspective(model, &mut child.sides[1], nnue::Color::Black, new_bk_raw, new_board);
+            Self::refresh_perspective(full, &mut child.sides[1], nnue::Color::Black, bk_raw, new_board);
         } else {
-            Self::diff_perspective(model, &mut child.sides[1], nnue::Color::Black, parent.raw_kings[1], old_board, new_board);
+            Self::diff_perspective(full, &mut child.sides[1], nnue::Color::Black, bk_raw, old_board, new_board);
         }
-
         child
     }
 
-    /// Run the NNUE forward pass using the precomputed accumulator.
-    fn evaluate(&self, full: &SfHalfKpFullModel, stm: Color) -> i32 {
-        let model = &full.model;
-        // from_accumulator expects kings[0]=wk (no rotation), kings[1]=bk.rotate()
+    fn do_evaluate(&self, full: &SfHalfKpFullModel, stm: nnue::Color) -> i32 {
+        let wk_raw = nnue::Square::from_index(self.raw_kings[0] as usize);
+        let bk_raw = nnue::Square::from_index(self.raw_kings[1] as usize);
         let mut state = SfHalfKpState::from_accumulator(
-            model,
-            [self.raw_kings[0], self.raw_kings[1].rotate()],
+            &full.model,
+            [wk_raw, bk_raw.rotate()],
             self.sides,
         );
-        let nnue_stm = to_nnue_color(stm);
-        scale_nn_to_centipawns(state.activate(nnue_stm)[0])
+        scale_nn_to_centipawns(state.activate(stm)[0])
     }
 }
 
@@ -325,9 +330,9 @@ const KILLER_PLY_CAPACITY: usize = 128;
 const MAX_ROOT_THREADS: usize = 8;
 
 // Fixed-size hash tables (power-of-2 for fast masking)
-const TT_SIZE: usize = 1 << 21; // 2M entries
+const TT_SIZE: usize = 1 << 23; // 8M entries
 const TT_MASK: usize = TT_SIZE - 1;
-const EVAL_CACHE_SIZE: usize = 1 << 19; // 512K entries
+const EVAL_CACHE_SIZE: usize = 1 << 21; // 2M entries
 const EVAL_CACHE_MASK: usize = EVAL_CACHE_SIZE - 1;
 const PAWN_CACHE_SIZE: usize = 1 << 18; // 256K entries
 const PAWN_CACHE_MASK: usize = PAWN_CACHE_SIZE - 1;
@@ -680,7 +685,7 @@ struct RustAlphaBetaEngine {
     eval_stack: Vec<i32>,  // static eval at each ply for improving detection
     eval_cache: Vec<EvalCacheEntry>,
     pawn_cache: Vec<PawnCacheEntry>,
-    nnue_stack: Vec<NNUEAcc>,  // accumulator per ply for incremental NNUE updates
+    nnue_stack: Vec<NNUEAcc>,  // per-ply incremental NNUE accumulator
     deadline: Option<Instant>,
     stopped: bool,
     opening_book: HashMap<u64, &'static str>,
@@ -765,13 +770,6 @@ impl RustAlphaBetaEngine {
         let search_start = Instant::now();
         self.deadline = time_budget.map(|budget| search_start + budget);
 
-        // Initialize root NNUE accumulator
-        self.ensure_ply_capacity(16);
-        {
-            let nnue_full = NNUE_MODEL.get_or_init(load_nnue);
-            self.nnue_stack[0] = NNUEAcc::from_board(nnue_full, &board);
-        }
-
         let mut best_move: Option<ChessMove> = None;
         let mut best_score = 0;
         let mut completed_depth = 0;
@@ -779,6 +777,13 @@ impl RustAlphaBetaEngine {
         let mut previous_iteration_nodes: Option<u64> = None;
         let mut last_iteration_time: Option<Duration> = None;
         let mut previous_iteration_time: Option<Duration> = None;
+
+        // Initialize root NNUE accumulator (ply 0)
+        {
+            let full = NNUE_MODEL.get_or_init(load_nnue);
+            self.ensure_ply_capacity(1);
+            self.nnue_stack[0] = NNUEAcc::from_board(full, &board);
+        }
 
         for current_depth in 1..=target_depth {
             if completed_depth > 0
@@ -926,11 +931,13 @@ impl RustAlphaBetaEngine {
         let first_move = root_moves[0].chess_move;
         let first_child = board.make_move_new(first_move);
         let first_hash = board_hash(&first_child);
-        repetition.push(first_hash);
         {
-            let nnue_full = NNUE_MODEL.get_or_init(load_nnue);
-            self.nnue_stack[1] = NNUEAcc::make_child(nnue_full, &self.nnue_stack[0], board, &first_child);
+            let full = NNUE_MODEL.get_or_init(load_nnue);
+            let parent_acc = self.nnue_stack[0];
+            self.ensure_ply_capacity(2);
+            self.nnue_stack[1] = NNUEAcc::make_child(full, &parent_acc, board, &first_child);
         }
+        repetition.push(first_hash);
         let mut best_score =
             -self.negamax(&first_child, depth - 1, -beta, -alpha, 1, repetition)?;
         repetition.pop(first_hash);
@@ -1001,23 +1008,20 @@ impl RustAlphaBetaEngine {
         repetition: RepetitionTracker,
         moves: Vec<ChessMove>,
     ) -> Option<RootChunkResult> {
-        let mut best_move = None;
         let mut best_score = -INFINITY;
         let mut local_alpha = alpha;
-
-        let nnue_full = NNUE_MODEL.get_or_init(load_nnue);
+        let mut best_move = None;
         for chess_move in moves {
             if self.should_stop() {
                 break;
             }
-
             let child = board.make_move_new(chess_move);
             let child_hash = board_hash(&child);
             let mut local_repetition = repetition.clone();
             local_repetition.push(child_hash);
-            self.nnue_stack[1] = NNUEAcc::make_child(nnue_full, &self.nnue_stack[0], &board, &child);
 
             let mut score = -self.negamax(
+
                 &child,
                 depth - 1,
                 -local_alpha - 1,
@@ -1230,11 +1234,18 @@ impl RustAlphaBetaEngine {
             && beta < MATE_SCORE - 1_000
         {
             if let Some(null_board) = board.null_move() {
-                let reduction = 2 + effective_depth / 3;
+                let mut reduction = 3 + effective_depth / 4;
+                if let Some(eval) = static_eval {
+                    let diff = (eval - beta) / 200;
+                    if diff > 0 {
+                        reduction += diff.min(3);
+                    }
+                }
+                // Null move: no piece changes, copy accumulator as-is
+                self.ensure_ply_capacity(ply + 2);
+                self.nnue_stack[ply + 1] = self.nnue_stack[ply];
                 let null_hash = board_hash(&null_board);
                 repetition.push(null_hash);
-                // Null move: no pieces change, accumulator is the same
-                self.nnue_stack[ply + 1] = self.nnue_stack[ply];
                 let search = self.negamax(
                     &null_board,
                     effective_depth - 1 - reduction,
@@ -1278,12 +1289,6 @@ impl RustAlphaBetaEngine {
             let move_count = index + 1;
             let child = board.make_move_new(chess_move);
             let child_hash = board_hash(&child);
-            // Update NNUE accumulator for child position
-            {
-                let nnue_full = NNUE_MODEL.get_or_init(load_nnue);
-                let parent_acc = self.nnue_stack[ply];
-                self.nnue_stack[ply + 1] = NNUEAcc::make_child(nnue_full, &parent_acc, board, &child);
-            }
             let is_capture_move = is_capture(board, chess_move);
             let capture_victim = if is_capture_move {
                 Some(victim_piece(board, chess_move).unwrap_or(Piece::Pawn))
@@ -1321,7 +1326,7 @@ impl RustAlphaBetaEngine {
             let mut extension = 0;
             if singular_move == Some(chess_move) {
                 let se_beta = tt_entry.unwrap().score - 2 * effective_depth;
-                let se_depth = (effective_depth - 1) / 2;
+                let se_depth = effective_depth - 3;
                 // Search excluding TT move at reduced depth/window
                 let excluded_score = self.negamax_excluding(
                     board, se_depth, se_beta - 1, se_beta,
@@ -1330,6 +1335,10 @@ impl RustAlphaBetaEngine {
                 if let Some(se_score) = excluded_score {
                     if se_score < se_beta {
                         extension = 1; // TT move is singular, extend it
+                        // Double extension for extremely singular moves
+                        if se_score < se_beta - 2 * effective_depth {
+                            extension = 2;
+                        }
                     }
                 }
             }
@@ -1337,6 +1346,13 @@ impl RustAlphaBetaEngine {
             // Track move at this ply for countermove recording
             self.ensure_ply_capacity(ply + 2);
             self.move_stack[ply] = Some(chess_move);
+
+            // Lazy NNUE: compute child accumulator only for moves that survive pruning
+            {
+                let full = NNUE_MODEL.get_or_init(load_nnue);
+                let parent_acc = self.nnue_stack[ply];
+                self.nnue_stack[ply + 1] = NNUEAcc::make_child(full, &parent_acc, board, &child);
+            }
 
             repetition.push(child_hash);
 
@@ -1365,16 +1381,16 @@ impl RustAlphaBetaEngine {
                     if self.killer_moves.get(ply).map_or(false, |k| k[0] == Some(chess_move) || k[1] == Some(chess_move)) {
                         reduction = (reduction - 1).max(0);
                     }
+                    // History-based reduction adjustment
+                    let hist = self.history_heuristic[mk];
+                    if hist > 4000 {
+                        reduction = (reduction - 1).max(0);
+                    } else if hist < -4000 {
+                        reduction += 1;
+                    }
                     // Reduce more if not improving
                     if !improving {
                         reduction += 1;
-                    }
-                    // Reduce more for moves with bad history
-                    let hist = self.history_heuristic[mk];
-                    if hist < -2000 {
-                        reduction += 1;
-                    } else if hist > 8000 {
-                        reduction = (reduction - 1).max(0);
                     }
                     search_depth = (search_depth - reduction).max(0);
                 }
@@ -1519,12 +1535,13 @@ impl RustAlphaBetaEngine {
 
             let child = board.make_move_new(chess_move);
             let child_hash = board_hash(&child);
-            repetition.push(child_hash);
             {
-                let nnue_full = NNUE_MODEL.get_or_init(load_nnue);
+                let full = NNUE_MODEL.get_or_init(load_nnue);
                 let parent_acc = self.nnue_stack[ply];
-                self.nnue_stack[ply + 1] = NNUEAcc::make_child(nnue_full, &parent_acc, board, &child);
+                self.ensure_ply_capacity(ply + 2);
+                self.nnue_stack[ply + 1] = NNUEAcc::make_child(full, &parent_acc, board, &child);
             }
+            repetition.push(child_hash);
             let search = self.quiescence(&child, -beta, -alpha, ply + 1, repetition);
             repetition.pop(child_hash);
             let score = -search?;
@@ -1563,12 +1580,13 @@ impl RustAlphaBetaEngine {
 
             let child = board.make_move_new(chess_move);
             let child_hash = board_hash(&child);
-            repetition.push(child_hash);
             {
-                let nnue_full = NNUE_MODEL.get_or_init(load_nnue);
+                let full = NNUE_MODEL.get_or_init(load_nnue);
                 let parent_acc = self.nnue_stack[ply];
-                self.nnue_stack[ply + 1] = NNUEAcc::make_child(nnue_full, &parent_acc, board, &child);
+                self.ensure_ply_capacity(ply + 2);
+                self.nnue_stack[ply + 1] = NNUEAcc::make_child(full, &parent_acc, board, &child);
             }
+            repetition.push(child_hash);
             let score = -self.negamax(&child, depth - 1, -beta, -alpha, ply + 1, repetition)?;
             repetition.pop(child_hash);
 
@@ -1608,7 +1626,8 @@ impl RustAlphaBetaEngine {
         }
 
         let full = NNUE_MODEL.get_or_init(load_nnue);
-        let score = self.nnue_stack[ply].evaluate(full, board.side_to_move());
+        let stm = if board.side_to_move() == Color::White { nnue::Color::White } else { nnue::Color::Black };
+        let score = self.nnue_stack[ply].do_evaluate(full, stm);
         self.eval_cache[eval_idx] = EvalCacheEntry { key: board_key, score };
         return score;
 

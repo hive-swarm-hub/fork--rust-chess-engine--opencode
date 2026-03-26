@@ -157,7 +157,7 @@ const HISTORY_LIMIT: i32 = 32_000;
 const CAPTURE_HISTORY_PIECES: usize = 6;
 const CAPTURE_HISTORY_LIMIT: i32 = 16_000;
 const MAX_TIME_SEARCH_DEPTH: i32 = 64;
-const WINNING_SCORE_THRESHOLD: i32 = 250;
+const WINNING_SCORE_THRESHOLD: i32 = 200;
 const PHASE_TOTAL: i32 = 24;
 const SEE_PRUNE_MARGIN: i32 = 80;
 
@@ -2151,7 +2151,7 @@ fn should_skip_next_iteration(
         1.2
     };
     if preserve_time {
-        threshold *= 0.85;
+        threshold *= 0.9;
     }
     projected.as_secs_f64() > remaining.as_secs_f64() * threshold
 }

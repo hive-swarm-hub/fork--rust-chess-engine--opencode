@@ -157,7 +157,6 @@ const HISTORY_LIMIT: i32 = 32_000;
 const CAPTURE_HISTORY_PIECES: usize = 6;
 const CAPTURE_HISTORY_LIMIT: i32 = 16_000;
 const MAX_TIME_SEARCH_DEPTH: i32 = 64;
-const WINNING_SCORE_THRESHOLD: i32 = 200;
 const PHASE_TOTAL: i32 = 24;
 const SEE_PRUNE_MARGIN: i32 = 80;
 
@@ -204,7 +203,6 @@ const RAZOR_MARGIN: [i32; 4] = [0, 230, 360, 500];
 
 // Contempt: slight penalty for draws when we likely have advantage
 const CONTEMPT: i32 = 0;
-const WINNING_REPETITION_PENALTY: i32 = 10;
 
 /// Build the opening book: maps position hash -> best move UCI string.
 /// These are strong opening moves from theory, covering common openings.
@@ -999,7 +997,7 @@ impl RustAlphaBetaEngine {
             }
         }
 
-        // IIR: reduce depth by 1 when no TT move found instead of paying for IID.
+        // IIR: reduce depth by 1 when no TT move found (replaces expensive IID)
         if tt_move.is_none() && effective_depth >= 4 && !in_check_now {
             effective_depth -= 1;
         }
@@ -1590,13 +1588,13 @@ impl RustAlphaBetaEngine {
     ) -> Option<i32> {
         match board.status() {
             BoardStatus::Checkmate => Some(-MATE_SCORE + ply as i32),
-            BoardStatus::Stalemate => Some(DRAW_SCORE),
+            BoardStatus::Stalemate => Some(-CONTEMPT), // Slight contempt: avoid stalemate
             BoardStatus::Ongoing => {
                 let rep_count = repetition.count(board_hash(board));
                 if rep_count >= 3 {
-                    Some(repetition_draw_score(board))
+                    Some(-CONTEMPT) // Slight contempt: avoid repetition draws
                 } else if rep_count >= 2 && ply > 0 {
-                    Some(repetition_draw_score(board))
+                    Some(-CONTEMPT)
                 } else {
                     None
                 }
@@ -1783,26 +1781,6 @@ fn piece_value(piece: Piece) -> i32 {
         Piece::Rook => ROOK,
         Piece::Queen => QUEEN,
         Piece::King => 0,
-    }
-}
-
-fn material_advantage(board: &Board, color: Color) -> i32 {
-    let mut ours = 0;
-    let mut theirs = 0;
-    for piece in [Piece::Pawn, Piece::Knight, Piece::Bishop, Piece::Rook, Piece::Queen] {
-        let value = piece_value(piece);
-        ours += (piece_bb(board, color, piece).popcnt() as i32) * value;
-        theirs += (piece_bb(board, !color, piece).popcnt() as i32) * value;
-    }
-    ours - theirs
-}
-
-fn repetition_draw_score(board: &Board) -> i32 {
-    let side = board.side_to_move();
-    if material_advantage(board, side) >= 300 && has_non_pawn_material(board, side) {
-        -WINNING_REPETITION_PENALTY
-    } else {
-        DRAW_SCORE
     }
 }
 
@@ -2056,6 +2034,8 @@ fn late_move_pruning_limit(depth: i32) -> usize {
         6 => 38,
         7 => 50,
         8 => 65,
+        9 => 85,
+        10 => 110,
         _ => usize::MAX,
     }
 }
@@ -2104,7 +2084,6 @@ fn should_skip_next_iteration(
     if best_score.abs() >= MATE_SCORE - 512 {
         return true;
     }
-    let preserve_time = best_score >= WINNING_SCORE_THRESHOLD;
 
     let Some(last_time) = last_time else {
         return false;
@@ -2126,9 +2105,7 @@ fn should_skip_next_iteration(
         return false;
     }
 
-    // In clearly winning positions, save more time for the rest of the game.
-    let early_depth_fraction = if preserve_time { 3.0 } else { 2.0 };
-    if elapsed.mul_f64(early_depth_fraction) <= budget {
+    if elapsed.mul_f64(2.0) <= budget {
         return false;
     }
 
@@ -2143,16 +2120,13 @@ fn should_skip_next_iteration(
         last_nodes,
         previous_nodes,
     );
-    let mut threshold = if next_depth >= 7 {
+    let threshold = if next_depth >= 7 {
         1.02
     } else if next_depth >= 6 {
         1.12
     } else {
         1.2
     };
-    if preserve_time {
-        threshold *= 0.8;
-    }
     projected.as_secs_f64() > remaining.as_secs_f64() * threshold
 }
 

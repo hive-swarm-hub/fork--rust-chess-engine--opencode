@@ -73,3 +73,4 @@ a7b209a	2239.6	10	discard	panic=abort on contempt=0 — 0W/1D/9L, worst run yet,
 0f5ec36	2581.3	10	discard	final variance sampling — 2W/1D/7L, engine at ceiling
 90ed70c	2239.6	10	discard	recapture extension at depth>=3 — 0W/1D/9L, too many extensions slow search
 b18f46e	2969.5	10	keep	nnue-rs NNUE (HalfKP 256x2-32-32-1) on contempt=0 optimized base — 6W/2D/2L NEW ALL-TIME BEST!
+0c6fdb5	3074.1	10	keep	eval cache 2M on NNUE base — 8W/0D/2L OVER 3000 ELO!

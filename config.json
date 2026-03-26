@@ -1,15 +1,15 @@
 {
     "resign": {
-        "move_count": 1,
-        "score": 0,
+        "move_count": 3,
+        "score": 600,
         "twosided": false,
-        "enabled": false
+        "enabled": true
     },
     "draw": {
-        "move_number": 0,
-        "move_count": 1,
-        "score": 0,
-        "enabled": false
+        "move_number": 34,
+        "move_count": 8,
+        "score": 10,
+        "enabled": true
     },
     "maxmoves": {
         "move_count": 1,
@@ -51,16 +51,16 @@
         "append_file": true
     },
     "sprt": {
-        "alpha": 0.0,
-        "beta": 0.0,
+        "alpha": 0.05,
+        "beta": 0.05,
         "elo0": 0.0,
-        "elo1": 0.0,
+        "elo1": 35.0,
         "model": "normalized",
-        "enabled": false
+        "enabled": true
     },
     "config_name": "config.json",
     "output": 0,
-    "seed": 16333371939676607469,
+    "seed": 16092015255660228927,
     "variant": 0,
     "type": 1,
     "gauntlet_seeds": 1,
@@ -69,8 +69,8 @@
     "wait": 50,
     "autosaveinterval": 20,
     "games": 2,
-    "rounds": 1,
-    "concurrency": 1,
+    "rounds": 100,
+    "concurrency": 5,
     "force_concurrency": false,
     "recover": true,
     "noswap": false,
@@ -99,7 +99,7 @@
                 "tc": {
                     "increment": 0,
                     "fixed_time": 0,
-                    "time": 20000,
+                    "time": 120000,
                     "moves": 40,
                     "timemargin": 0
                 },
@@ -136,7 +136,7 @@
                 "tc": {
                     "increment": 0,
                     "fixed_time": 0,
-                    "time": 4000,
+                    "time": 24000,
                     "moves": 40,
                     "timemargin": 0
                 },
@@ -173,7 +173,7 @@
                 "tc": {
                     "increment": 0,
                     "fixed_time": 0,
-                    "time": 4000,
+                    "time": 24000,
                     "moves": 40,
                     "timemargin": 0
                 },
@@ -210,7 +210,7 @@
                 "tc": {
                     "increment": 0,
                     "fixed_time": 0,
-                    "time": 4000,
+                    "time": 24000,
                     "moves": 40,
                     "timemargin": 0
                 },
@@ -247,7 +247,7 @@
                 "tc": {
                     "increment": 0,
                     "fixed_time": 0,
-                    "time": 4000,
+                    "time": 24000,
                     "moves": 40,
                     "timemargin": 0
                 },
@@ -284,7 +284,7 @@
                 "tc": {
                     "increment": 0,
                     "fixed_time": 0,
-                    "time": 4000,
+                    "time": 24000,
                     "moves": 40,
                     "timemargin": 0
                 },
@@ -384,10 +384,10 @@
             "penta_LL": 0
         },
         "HiveChess vs SF_2900": {
-            "wins": 1,
+            "wins": 3,
             "losses": 0,
             "draws": 1,
-            "penta_WW": 0,
+            "penta_WW": 1,
             "penta_WD": 1,
             "penta_WL": 0,
             "penta_DD": 0,
@@ -395,21 +395,21 @@
             "penta_LL": 0
         },
         "HiveChess vs SF_2700": {
-            "wins": 1,
+            "wins": 4,
             "losses": 0,
-            "draws": 1,
-            "penta_WW": 0,
-            "penta_WD": 1,
+            "draws": 0,
+            "penta_WW": 2,
+            "penta_WD": 0,
             "penta_WL": 0,
             "penta_DD": 0,
             "penta_LD": 0,
             "penta_LL": 0
         },
         "HiveChess vs SF_2800": {
-            "wins": 2,
+            "wins": 4,
             "losses": 0,
             "draws": 0,
-            "penta_WW": 1,
+            "penta_WW": 2,
             "penta_WD": 0,
             "penta_WL": 0,
             "penta_DD": 0,
@@ -450,10 +450,10 @@
             "penta_LL": 0
         },
         "HiveChess vs SF_2600": {
-            "wins": 2,
+            "wins": 6,
             "losses": 0,
             "draws": 0,
-            "penta_WW": 1,
+            "penta_WW": 3,
             "penta_WD": 0,
             "penta_WL": 0,
             "penta_DD": 0,

@@ -13,3 +13,5 @@ results.tsv
 
 # OS files
 .DS_Store
+run.log
+verify-valid.log

@@ -127,7 +127,6 @@ fn main() {
 // Engine code below
 // =============================================================================
 
-use std::collections::HashMap;
 use std::str::FromStr;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -203,76 +202,6 @@ const RAZOR_MARGIN: [i32; 4] = [0, 230, 360, 500];
 
 // Contempt: slight penalty for draws when we likely have advantage
 const CONTEMPT: i32 = 0;
-
-/// Build the opening book: maps position hash -> best move UCI string.
-/// These are strong opening moves from theory, covering common openings.
-fn build_opening_book() -> HashMap<u64, &'static str> {
-    let mut book = HashMap::new();
-    // We build the book by replaying move sequences and recording hash -> next_move
-    // Each line is a sequence of moves; we record each intermediate position hash -> next move
-    let lines: &[&[&str]] = &[
-        // Italian Game / Giuoco Piano
-        &["e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "f8c5", "c2c3", "g8f6", "d2d4"],
-        // Ruy Lopez main line
-        &["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "a7a6", "b5a4", "g8f6", "e1g1"],
-        // Scotch Game
-        &["e2e4", "e7e5", "g1f3", "b8c6", "d2d4", "e5d4", "f3d4"],
-        // Queen's Gambit
-        &["d2d4", "d7d5", "c2c4", "e7e6", "b1c3", "g8f6", "c1g5"],
-        // Queen's Gambit Declined
-        &["d2d4", "d7d5", "c2c4", "c7c6", "g1f3", "g8f6", "b1c3"],
-        // Sicilian Defense (Open)
-        &["e2e4", "c7c5", "g1f3", "d7d6", "d2d4", "c5d4", "f3d4"],
-        // Sicilian Najdorf
-        &["e2e4", "c7c5", "g1f3", "d7d6", "d2d4", "c5d4", "f3d4", "g8f6", "b1c3", "a7a6", "c1e3"],
-        // French Defense
-        &["e2e4", "e7e6", "d2d4", "d7d5", "b1c3", "g8f6", "c1g5"],
-        // Caro-Kann
-        &["e2e4", "c7c6", "d2d4", "d7d5", "b1c3", "d5e4", "c3e4"],
-        // King's Indian
-        &["d2d4", "g8f6", "c2c4", "g7g6", "b1c3", "f8g7", "e2e4", "d7d6", "g1f3"],
-        // Nimzo-Indian
-        &["d2d4", "g8f6", "c2c4", "e7e6", "b1c3", "f8b4", "e2e3"],
-        // English Opening
-        &["c2c4", "e7e5", "b1c3", "g8f6", "g1f3"],
-        // London System
-        &["d2d4", "d7d5", "g1f3", "g8f6", "c1f4", "e7e6", "e2e3"],
-        // Catalan
-        &["d2d4", "g8f6", "c2c4", "e7e6", "g2g3", "d7d5", "f1g2"],
-        // Pirc Defense
-        &["e2e4", "d7d6", "d2d4", "g8f6", "b1c3", "g7g6", "g1f3"],
-        // Scandinavian
-        &["e2e4", "d7d5", "e4d5", "d8d5", "b1c3", "d5a5", "d2d4"],
-        // Slav Defense
-        &["d2d4", "d7d5", "c2c4", "c7c6", "g1f3", "g8f6", "b1c3", "d5c4", "a2a4"],
-        // Grunfeld
-        &["d2d4", "g8f6", "c2c4", "g7g6", "b1c3", "d7d5", "c4d5", "f6d5", "e2e4"],
-        // Default opening moves
-        &["e2e4"],
-        &["e2e4", "e7e5", "g1f3"],
-        &["d2d4", "d7d5", "c2c4"],
-        &["d2d4", "g8f6", "c2c4"],
-    ];
-
-    for line in lines {
-        let mut board = Board::default();
-        for (i, move_uci) in line.iter().enumerate() {
-            if let Ok(mv) = ChessMove::from_str(move_uci) {
-                if move_is_legal(&board, mv) {
-                    // Record this position -> this move (only if not already recorded)
-                    let hash = board.get_hash();
-                    book.entry(hash).or_insert(line[i]);
-                    board = board.make_move_new(mv);
-                } else {
-                    break; // Illegal move in sequence, stop this line
-                }
-            } else {
-                break;
-            }
-        }
-    }
-    book
-}
 
 const PAWN_TABLE: [i32; 64] = [
     0, 0, 0, 0, 0, 0, 0, 0, 5, 10, 10, -20, -20, 10, 10, 5, 5, -5, -10, 0, 0, -10, -5, 5, 0, 0, 0,
@@ -503,7 +432,6 @@ struct RustAlphaBetaEngine {
     pawn_cache: Vec<PawnCacheEntry>,
     deadline: Option<Instant>,
     stopped: bool,
-    opening_book: HashMap<u64, &'static str>,
 }
 
 impl RustAlphaBetaEngine {
@@ -523,7 +451,6 @@ impl RustAlphaBetaEngine {
             pawn_cache: vec![PawnCacheEntry::default(); PAWN_CACHE_SIZE],
             deadline: None,
             stopped: false,
-            opening_book: build_opening_book(),
         }
     }
 
@@ -554,22 +481,6 @@ impl RustAlphaBetaEngine {
 
         if !matches!(board.status(), BoardStatus::Ongoing) {
             return Err(String::from("Cannot search a finished game."));
-        }
-
-        // Opening book lookup: if this position is in the book, play instantly
-        let board_key = board_hash(&board);
-        if let Some(book_move_str) = self.opening_book.get(&board_key) {
-            if let Ok(book_move) = ChessMove::from_str(book_move_str) {
-                if move_is_legal(&board, book_move) {
-                    return Ok(RawSearchResult {
-                        move_uci: book_move.to_string(),
-                        score: 0,
-                        depth: 1,
-                        nodes: 1,
-                        pv_uci: vec![book_move.to_string()],
-                    });
-                }
-            }
         }
 
         let time_budget = movetime_ms.filter(|ms| *ms > 0).map(Duration::from_millis);
@@ -880,7 +791,6 @@ impl RustAlphaBetaEngine {
             pawn_cache: self.pawn_cache.clone(),
             deadline: self.deadline,
             stopped: false,
-            opening_book: HashMap::new(), // Workers don't need the opening book
         }
     }
 

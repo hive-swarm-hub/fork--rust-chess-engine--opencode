@@ -19,3 +19,4 @@ dc291ee	2760.4	10	keep	VERIFICATION: same code, no changes. 9W/1D/0L confirms ~2
 28fb5ae	2718.3	10	keep	NEW BASELINE (ANCHOR=2800): IIR replaces IID. 4W/0D/6L vs SF 2600-3000. First valid result under new gauntlet.
 db7cfbc	2718.3	10	keep	aspiration window 40->30cp (matching top hive run e486)
 073abe7	2675.7	10	discard	LMP limits to sijun-bot config d1=9/d2=14/d3=22/d4=32/d5=45/d6+=MAX (regressed -43, more permissive pruning not better)
+5c5f992	2759.5	10	keep	remove contempt: CONTEMPT=0, draws/reps return DRAW_SCORE (+41 ELO)

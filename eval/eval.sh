@@ -36,10 +36,21 @@ else
 fi
 PGN_OUT="eval/games.pgn"
 
-# Parallel execution settings
-CONCURRENCY=$(nproc 2>/dev/null || echo 1)
-# Use SPRT for statistical significance (terminate early once significance reached)
+# Parallel execution settings (Dynamically calculated: ~48% of total cores)
+TOTAL_CORES=$(nproc 2>/dev/null || echo 1)
+CONCURRENCY=$(( TOTAL_CORES * 48 / 100 ))
+if [ "$CONCURRENCY" -lt 1 ]; then CONCURRENCY=1; fi
+
+# Time Control: 40 moves in 2 minutes (40/120)
+TC="40/120"
+# Stockfish gets 1/5th the time (120 / 5 = 24)
+SF_TC="40/24"
+
+# Use SPRT for statistical significance
 SPRT_ARGS="-sprt elo0=0 elo1=10 alpha=0.05 beta=0.05"
+
+# Adjudication: End games early if score is decisive to save time
+ADJUDICATION="-resign movecount=3 score=600"
 
 # --- Helper: output summary and exit ---
 summary() {
@@ -189,10 +200,7 @@ fi
 # --- Run gauntlet ---
 echo "Running parallel gauntlet tournament with SPRT (concurrency: $CONCURRENCY)... 🚀" >&2
 
-# Parallel eval: Stockfish UCI_LimitStrength with asymmetric time.
-# 5 levels, 100-step spacing centered on anchor.
-# SPRT will terminate as soon as significance is reached.
-
+# Parallel eval: 5 levels of Stockfish centered on the 2800 anchor.
 GAUNTLET_LOG=$(mktemp)
 rm -f "$PGN_OUT"
 
@@ -204,16 +212,16 @@ L3=$ANCHOR_CENTER
 L4=$((ANCHOR_CENTER + STEP))
 L5=$((ANCHOR_CENTER + 2*STEP))
 ELO_LEVELS="$L1 $L2 $L3 $L4 $L5"
-GAMES_PER_OPPONENT=200 # Significant games, SPRT stops when clear.
+GAMES_PER_OPPONENT=200 # Sufficient games, SPRT stops when clear.
 
 CMD="$CUTECHESS"
-# Parallel concurrency and SPRT for statistical significance
-CMD="$CMD -concurrency $CONCURRENCY $SPRT_ARGS"
-# Engine: 500ms per move
-CMD="$CMD -engine cmd=$ENGINE_BIN proto=uci name=HiveChess tc=40/20"
-# Stockfish: 100ms per move
+# Parallel concurrency, SPRT, and Adjudication
+CMD="$CMD -concurrency $CONCURRENCY $SPRT_ARGS $ADJUDICATION"
+# Engine: 40 moves in 2 minutes (40/120)
+CMD="$CMD -engine cmd=$ENGINE_BIN proto=uci name=HiveChess tc=$TC"
+# Stockfish: 40 moves in 24 seconds (1/5th advantage)
 for LVL in $ELO_LEVELS; do
-    CMD="$CMD -engine cmd=$STOCKFISH proto=uci name=SF_${LVL} tc=40/4"
+    CMD="$CMD -engine cmd=$STOCKFISH proto=uci name=SF_${LVL} tc=$SF_TC"
     CMD="$CMD option.UCI_LimitStrength=true option.UCI_Elo=$LVL option.Threads=1 option.Hash=16"
 done
 

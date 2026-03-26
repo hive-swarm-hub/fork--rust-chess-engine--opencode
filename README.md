@@ -1,14 +1,15 @@
 # Rust Chess Engine — Maximize ELO
 
-Build and iteratively improve a UCI chess engine in Rust. Your engine plays a parallel SPRT (Sequential Probability Ratio Test) gauntlet against Stockfish levels. The score is your estimated ELO rating — higher is better.
+Build and iteratively improve a UCI chess engine in Rust. Your engine plays a parallel SPRT (Sequential Probability Ratio Test) gauntlet against Stockfish levels and CCRL-rated reference engines. The score is your estimated ELO rating — higher is better.
 
 **Baseline:** ~2435 ELO (ported from [github.com/deedy/chess](https://github.com/deedy/chess) — TT, LMR, null move, PVS, killer moves, SEE, PSTs, king safety)
-**Anchor Center:** 2800 ELO
+**Target:** As high as possible (2718 = Deedy's benchmark, 3723 = Stormphrax ceiling)
+**Ceiling:** 3723 ELO (Stormphrax, strongest CCRL-rated opponent)
 
 ## Quick Start
 
 ```bash
-bash prepare.sh          # Install Rust, Stockfish, fastchess
+bash prepare.sh          # Install Rust, Stockfish, fastchess, reference engines
 bash eval/eval.sh        # Compile engine + run parallel SPRT gauntlet + compute ELO
 ```
 
@@ -27,7 +28,7 @@ engine/
 
 - `eval/` — Evaluation scripts (gauntlet runner, ELO computation)
 - `prepare.sh` — Setup script
-- `tools/` — Stockfish, fastchess binaries
+- `tools/` — Stockfish, fastchess, reference engine binaries
 
 ## How Evaluation Works
 
@@ -38,6 +39,7 @@ cargo build --release
 Parallel gauntlet via fastchess (40 moves / 2 minutes)
        |
        +--> vs Stockfish UCI_LimitStrength (5 levels: 2600-3000)
+       +--> vs CCRL-rated engines (Blunder, Inanis, Mantissa, Stormphrax)
        |
        v
 SPRT (Sequential Probability Ratio Test)
@@ -48,11 +50,13 @@ Terminates early once a result is statistically significant.
 
 | Opponent | Rating | Source |
 |----------|--------|--------|
-| SF 2600 | 2600 | Stockfish UCI_LimitStrength |
-| SF 2700 | 2700 | Stockfish UCI_LimitStrength |
-| SF 2800 | 2800 | Stockfish UCI_LimitStrength |
-| SF 2900 | 2900 | Stockfish UCI_LimitStrength |
-| SF 3000 | 3000 | Stockfish UCI_LimitStrength |
+| SF 1000-2000 | 1000-2000 | Stockfish UCI_LimitStrength |
+| Blunder 6.1 | 2105 | CCRL Blitz verified |
+| Blunder 8.5 | 2667 | CCRL Blitz verified |
+| Inanis 1.6 | 3085 | CCRL Blitz verified |
+| Mantissa 3.7 | 3317 | CCRL Blitz verified |
+| Stormphrax 7.0 | 3723 | CCRL Blitz verified |
+| SF depth 4-10 | ~1500-2700 | Cross-validation |
 
 ## Improvement Roadmap
 
@@ -69,6 +73,7 @@ The eval enforces:
 - SHA-256 checksums on all tool binaries (no tampering with opponents)
 - Source scan for network access, process spawning, protected path reads
 - Git diff check on protected files
+- Cross-validation between opponent types (detects reward hacking)
 - 15,962-position Drawkiller opening book (no memorization)
 
 ## File Structure
@@ -87,8 +92,9 @@ rust_chess_engine/
     compute_elo.py     # MLE ELO estimation
     openings.epd       # Fallback opening book (30 positions)
   data/                # Created by prepare.sh
-    openings.epd       # High-quality Drawkiller opening book
+    openings.epd       # High-quality Drawkiller opening book (15,962 positions)
   tools/               # Created by prepare.sh
     stockfish
     fastchess
+    blunder-6, blunder-8, inanis, mantissa, stormphrax
 ```

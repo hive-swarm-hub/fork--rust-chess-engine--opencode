@@ -15,3 +15,4 @@ dc291ee	2760.4	10	keep	VERIFICATION: same code, no changes. 9W/1D/0L confirms ~2
 80a0925	2418.3	10	keep	FINAL VERIFY: same code, ANCHOR=2500. 4W/0D/6L. Shows ~350 ELO variance
 80a0925	2474.1	10	keep	FINAL RUN: same code, default anchor. 8W/0D/2L. Avg of 3 runs: ~2678
 6e6707b	2240.5	10	keep	NO CHANGES: same code. 5W/1D/4L. 4 runs: 2800/2760/2474/2240, avg ~2594
+---	---	---	---	ANCHOR_CENTER changed from 2200 to 2800 (upstream merge). All scores above are INVALID for comparison. New baseline needed.

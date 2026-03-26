@@ -981,7 +981,7 @@ impl RustAlphaBetaEngine {
             let entry = self.tt[tt_idx];
             if entry.key == tt_key { Some(entry) } else { None }
         };
-        let mut tt_move = tt_entry.and_then(|entry| entry.best_move);
+        let tt_move = tt_entry.and_then(|entry| entry.best_move);
 
         if let Some(entry) = tt_entry {
             if entry.depth >= effective_depth {
@@ -997,17 +997,9 @@ impl RustAlphaBetaEngine {
             }
         }
 
-        if tt_move.is_none() && effective_depth >= 6 && !in_check_now {
-            let iid_depth = if effective_depth >= 8 {
-                effective_depth - 3
-            } else {
-                effective_depth - 2
-            };
-            if iid_depth > 0 {
-                let _ = self.negamax(board, iid_depth, alpha, beta, ply, repetition);
-                let entry = &self.tt[tt_idx];
-                tt_move = if entry.key == tt_key { entry.best_move } else { None };
-            }
+        // IIR: reduce depth by 1 when no TT move found (replaces expensive IID)
+        if tt_move.is_none() && effective_depth >= 4 && !in_check_now {
+            effective_depth -= 1;
         }
 
         let static_eval = if !in_check_now {

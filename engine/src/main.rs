@@ -129,6 +129,7 @@ fn main() {
 
 use std::collections::HashMap;
 use std::str::FromStr;
+use std::sync::OnceLock;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -136,6 +137,54 @@ use chess::{
     get_bishop_moves, get_king_moves, get_knight_moves, get_pawn_attacks, get_rook_moves,
     BitBoard, Board, BoardStatus, ChessMove, Color, File, MoveGen, Piece, Rank, Square,
 };
+
+use nnue::stockfish::halfkp::{SfHalfKpFullModel, scale_nn_to_centipawns};
+use binread::BinRead;
+
+const NNUE_WEIGHTS: &[u8] = include_bytes!("nn.nnue");
+static NNUE_MODEL: OnceLock<SfHalfKpFullModel> = OnceLock::new();
+
+fn load_nnue() -> SfHalfKpFullModel {
+    let mut cursor = std::io::Cursor::new(NNUE_WEIGHTS);
+    SfHalfKpFullModel::read(&mut cursor).expect("NNUE load failed")
+}
+
+fn nnue_evaluate(board: &Board) -> i32 {
+    let full = NNUE_MODEL.get_or_init(load_nnue);
+    let model = &full.model;
+
+    // Map chess::Square to nnue::Square (both A1=0, H8=63)
+    let wk_sq = board.king_square(Color::White);
+    let bk_sq = board.king_square(Color::Black);
+    let wk = nnue::Square::from_index(wk_sq.to_index());
+    let bk = nnue::Square::from_index(bk_sq.to_index());
+
+    let mut state = model.new_state(wk, bk);
+
+    for &chess_color in &[Color::White, Color::Black] {
+        let nc = if chess_color == Color::White { nnue::Color::White } else { nnue::Color::Black };
+        for &chess_piece in &[Piece::Pawn, Piece::Knight, Piece::Bishop, Piece::Rook, Piece::Queen] {
+            let np = match chess_piece {
+                Piece::Pawn   => nnue::Piece::Pawn,
+                Piece::Knight => nnue::Piece::Knight,
+                Piece::Bishop => nnue::Piece::Bishop,
+                Piece::Rook   => nnue::Piece::Rook,
+                Piece::Queen  => nnue::Piece::Queen,
+                Piece::King   => unreachable!(),
+            };
+            let bb = board.pieces(chess_piece) & board.color_combined(chess_color);
+            for sq in bb {
+                let ns = nnue::Square::from_index(sq.to_index());
+                for &acc_color in &nnue::Color::ALL {
+                    state.add(acc_color, np, nc, ns);
+                }
+            }
+        }
+    }
+
+    let stm = if board.side_to_move() == Color::White { nnue::Color::White } else { nnue::Color::Black };
+    scale_nn_to_centipawns(state.activate(stm)[0])
+}
 
 const INFINITY: i32 = 1_000_000;
 const MATE_SCORE: i32 = 100_000;
@@ -1394,6 +1443,11 @@ impl RustAlphaBetaEngine {
             return cached.score;
         }
 
+        let score = nnue_evaluate(board);
+        self.eval_cache[eval_idx] = EvalCacheEntry { key: board_key, score };
+        return score;
+
+        #[allow(unreachable_code)]
         let phase = game_phase(board);
         let endgame = phase <= 6;
         let mut white_mg = 0;

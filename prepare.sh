@@ -191,12 +191,21 @@ echo "Checksums saved to $CHECKSUM_FILE"
 echo "Installing Python dependencies..."
 pip install -r requirements.txt 2>/dev/null || pip3 install -r requirements.txt
 
-# --- Generate opening book (500 diverse positions) ---
+# --- Generate or download opening book ---
 mkdir -p data
-echo "Generating opening book..."
-python3 gen_openings.py > data/openings.epd 2>&1 || {
-    echo "WARNING: Could not generate opening book. Using built-in fallback (30 positions)."
-}
+echo "Setting up opening book..."
+BOOK_URL="https://raw.githubusercontent.com/official-stockfish/books/master/Drawkiller_balanced_big.epd.zip"
+if curl -sL "$BOOK_URL" -o data/openings.epd.zip 2>/dev/null; then
+    unzip -o data/openings.epd.zip -d data/ >/dev/null 2>&1
+    mv data/Drawkiller_balanced_big.epd data/openings.epd 2>/dev/null || true
+    rm -f data/openings.epd.zip
+    echo "  Downloaded Drawkiller_balanced_big.epd (15k+ positions)."
+else
+    echo "  WARNING: Could not download opening book. Generating local fallback..."
+    python3 gen_openings.py > data/openings.epd 2>&1 || {
+        echo "  WARNING: Could not generate opening book. Using built-in fallback (30 positions)."
+    }
+fi
 if [ -f "data/openings.epd" ]; then
     COUNT=$(wc -l < data/openings.epd | tr -d ' ')
     echo "Opening book: $COUNT positions in data/openings.epd"

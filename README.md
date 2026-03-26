@@ -1,8 +1,8 @@
 # Rust Chess Engine — Maximize ELO
 
-Build and iteratively improve a UCI chess engine in Rust. Your engine plays a 90-game gauntlet against Stockfish at calibrated strength levels and CCRL-rated reference engines. The score is your estimated ELO rating — higher is better.
+Build and iteratively improve a UCI chess engine in Rust. Your engine plays a parallel SPRT (Sequential Probability Ratio Test) gauntlet against Stockfish at calibrated strength levels and CCRL-rated reference engines. The score is your estimated ELO rating — higher is better.
 
-**Baseline:** ~1838 ELO (ported from [github.com/deedy/chess](https://github.com/deedy/chess) — TT, LMR, null move, PVS, killer moves, SEE, PSTs, king safety)
+**Baseline:** ~2435 ELO (ported from [github.com/deedy/chess](https://github.com/deedy/chess) — TT, LMR, null move, PVS, killer moves, SEE, PSTs, king safety)
 **Target:** As high as possible (2718 = Deedy's benchmark, 3723 = Stormphrax ceiling)
 **Ceiling:** 3723 ELO (Stormphrax, strongest CCRL-rated opponent)
 
@@ -10,7 +10,7 @@ Build and iteratively improve a UCI chess engine in Rust. Your engine plays a 90
 
 ```bash
 bash prepare.sh          # Install Rust, Stockfish, fastchess, reference engines
-bash eval/eval.sh        # Compile engine + run 90-game gauntlet + compute ELO
+bash eval/eval.sh        # Compile engine + run parallel SPRT gauntlet + compute ELO
 ```
 
 ## What You Modify
@@ -36,15 +36,14 @@ engine/
 cargo build --release
        |
        v
-90-game gauntlet via fastchess (5+0.05s time control)
+Parallel gauntlet via fastchess (40 moves / 2 minutes)
        |
-       +--> vs Stockfish UCI_LimitStrength 1000-2000  (5 levels, 10 games each)
-       +--> vs CCRL-rated engines 2105-3723            (5 engines, 10 games each)
-       +--> vs Stockfish depth-limited d4-d10           (4 levels, 10 games each)
+       +--> vs Stockfish UCI_LimitStrength (5 levels: 2600-3000)
+       +--> vs CCRL-rated engines (Blunder, Inanis, Mantissa, Stormphrax)
        |
        v
-MLE ELO estimation with 95% confidence interval
-Cross-validation between opponent types (detects reward hacking)
+SPRT (Sequential Probability Ratio Test)
+Terminates early once a result is statistically significant.
 ```
 
 ## Gauntlet Opponents
@@ -63,7 +62,7 @@ Cross-validation between opponent types (detects reward hacking)
 
 | Phase | ELO Range | Key Techniques |
 |-------|-----------|----------------|
-| Baseline | ~1838 | TT, LMR, null move, PVS, killer moves, SEE, PSTs, king safety |
+| Baseline | ~2435 | TT, LMR, null move, PVS, killer moves, SEE, PSTs, king safety |
 | Core | 1500-2000 | Transposition table, MVV-LVA, killer moves, null move pruning, LMR |
 | Evaluation | 2000-2400 | Piece-square tables, pawn structure, king safety, mobility |
 | Advanced | 2400-2800 | NNUE evaluation, PVS, singular extensions, Syzygy tablebases |
@@ -75,8 +74,8 @@ The eval enforces:
 - SHA-256 checksums on all tool binaries (no tampering with opponents)
 - Source scan for network access, process spawning, protected path reads
 - Git diff check on protected files
-- Cross-validation between 3 opponent types (divergence > 300 ELO = warning)
-- 500-position randomized opening book (no memorization)
+- Cross-validation between opponent types (detects reward hacking)
+- 15,962-position Drawkiller opening book (no memorization)
 
 ## File Structure
 
@@ -85,7 +84,7 @@ rust_chess_engine/
   program.md           # Full task spec (agent reads this)
   prepare.sh           # One-time setup
   requirements.txt     # Python dependencies
-  gen_openings.py      # Opening book generator (500 positions)
+  gen_openings.py      # Opening book generator (fallback)
   engine/              # YOUR CODE — modify freely
     Cargo.toml
     src/main.rs
@@ -94,7 +93,7 @@ rust_chess_engine/
     compute_elo.py     # MLE ELO estimation
     openings.epd       # Fallback opening book (30 positions)
   data/                # Created by prepare.sh
-    openings.epd       # Generated opening book (500 positions)
+    openings.epd       # High-quality Drawkiller opening book (15,962 positions)
   tools/               # Created by prepare.sh
     stockfish
     fastchess

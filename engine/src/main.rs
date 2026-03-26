@@ -253,8 +253,8 @@ const REVERSE_FUTILITY_MARGIN: [i32; 5] = [0, 75, 140, 225, 310];
 const FUTILITY_MARGIN: [i32; 5] = [0, 90, 155, 245, 340];
 const RAZOR_MARGIN: [i32; 4] = [0, 230, 360, 500];
 
-// Contempt: slight penalty for draws when we likely have advantage
-const CONTEMPT: i32 = 12;
+// Contempt: 0 = accept draws (better vs strong opponents at anchor 2800)
+const CONTEMPT: i32 = 0;
 
 /// Build the opening book: maps position hash -> best move UCI string.
 /// These are strong opening moves from theory, covering common openings.

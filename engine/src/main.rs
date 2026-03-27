@@ -517,6 +517,23 @@ impl Default for TTEntry {
     }
 }
 
+fn tt_pruning_eval(raw_eval: i32, tt_entry: Option<TTEntry>) -> i32 {
+    let Some(entry) = tt_entry else {
+        return raw_eval;
+    };
+
+    if entry.score.abs() >= MATE_SCORE - 512 {
+        return raw_eval;
+    }
+
+    match entry.flag {
+        EXACT => entry.score,
+        LOWER_BOUND if entry.score > raw_eval => entry.score,
+        UPPER_BOUND if entry.score < raw_eval => entry.score,
+        _ => raw_eval,
+    }
+}
+
 #[derive(Clone, Copy)]
 struct EvalCacheEntry {
     key: u64,
@@ -1150,18 +1167,19 @@ impl RustAlphaBetaEngine {
             effective_depth -= 1;
         }
 
-        let static_eval = if !in_check_now {
+        let raw_static_eval = if !in_check_now {
             Some(self.evaluate(board))
         } else {
             None
         };
+        let static_eval = raw_static_eval.map(|eval| tt_pruning_eval(eval, tt_entry));
 
-        // Store static eval for improving detection
+        // Store the raw eval for improving detection. TT-refined eval is used only for pruning.
         self.ensure_ply_capacity(ply + 2);
-        self.eval_stack[ply] = static_eval.unwrap_or(0);
+        self.eval_stack[ply] = raw_static_eval.unwrap_or(0);
         let improving = !in_check_now
             && ply >= 2
-            && static_eval.map_or(false, |e| e > self.eval_stack[ply - 2]);
+            && raw_static_eval.map_or(false, |e| e > self.eval_stack[ply - 2]);
 
         if let Some(eval) = static_eval {
             if effective_depth <= 4
@@ -1182,6 +1200,8 @@ impl RustAlphaBetaEngine {
             && !in_check_now
             && has_non_pawn_material(board, board.side_to_move())
             && beta < MATE_SCORE - 1_000
+            && beta == alpha + 1
+            && static_eval.map_or(false, |eval| eval >= beta)
         {
             if let Some(null_board) = board.null_move() {
                 let reduction = 2 + effective_depth / 3;

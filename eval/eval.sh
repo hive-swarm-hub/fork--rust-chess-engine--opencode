@@ -43,11 +43,11 @@ if [ "$CONCURRENCY" -lt 1 ]; then CONCURRENCY=1; fi
 
 # Time Control: 40 moves in 2 minutes (40/120)
 TC="40/120"
-# Both sides get the same time control
-SF_TC="40/120"
+# Stockfish gets 1/5th the time (120 / 5 = 24)
+SF_TC="40/24"
 
 # Use SPRT for statistical significance (Widened to 0-35 for <1 min iterations)
-SPRT_ARGS="-sprt elo0=0 elo1=50 alpha=0.05 beta=0.05"
+SPRT_ARGS="-sprt elo0=0 elo1=35 alpha=0.05 beta=0.05"
 
 # Adjudication: End games early to save time
 # - Resign if score > 6.00 for 3 moves

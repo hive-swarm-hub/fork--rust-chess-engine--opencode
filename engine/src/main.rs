@@ -239,7 +239,7 @@ const DRAW_SCORE: i32 = 0;
 const ASPIRATION_WINDOW: i32 = 30;
 const HISTORY_SIZE: usize = 1 << 16;
 const KILLER_PLY_CAPACITY: usize = 128;
-const MAX_ROOT_THREADS: usize = 1;
+const MAX_ROOT_THREADS: usize = 8;
 
 // Fixed-size hash tables (power-of-2 for fast masking)
 const TT_SIZE: usize = 1 << 21; // 2M entries
@@ -1282,12 +1282,7 @@ impl RustAlphaBetaEngine {
                         continue;
                     }
                 }
-                let mk = move_key(chess_move) as usize;
-                let mut lmp_limit = late_move_pruning_limit(effective_depth);
-                if self.history_heuristic[mk] < -4000 {
-                    lmp_limit /= 2;
-                }
-                if move_count > lmp_limit {
+                if move_count > late_move_pruning_limit(effective_depth) {
                     continue;
                 }
                 // SEE pruning for quiet moves at low depth

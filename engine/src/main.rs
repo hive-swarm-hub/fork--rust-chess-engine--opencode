@@ -1846,15 +1846,8 @@ impl RustAlphaBetaEngine {
             let attacker = board
                 .piece_on(chess_move.get_source())
                 .unwrap_or(Piece::Pawn);
-            let see_val = static_exchange_eval(board, chess_move);
-            let capture_hist = i32::from(self.capture_history[capture_history_key(chess_move, victim)]);
-            if see_val >= 0 {
-                // Good capture: ordered by MVV-LVA + capture history, above killers
-                score += 500_000 + 16 * piece_value(victim) - piece_value(attacker) + capture_hist;
-            } else {
-                // Bad capture: ordered below killers and quiet moves, by capture history
-                score += -200_000 + capture_hist;
-            }
+            score += 500_000 + 16 * piece_value(victim) - piece_value(attacker);
+            score += i32::from(self.capture_history[capture_history_key(chess_move, victim)]);
         }
 
         if let Some(killers) = self.killer_moves.get(ply) {

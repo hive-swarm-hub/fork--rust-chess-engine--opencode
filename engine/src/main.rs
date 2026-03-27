@@ -190,7 +190,7 @@ use chess::{
     get_bishop_moves, get_king_moves, get_knight_moves, get_pawn_attacks, get_rook_moves, BitBoard,
     Board, BoardStatus, ChessMove, Color, File, MoveGen, Piece, Rank, Square,
 };
-use nnue::stockfish::halfkp::{SfHalfKpFullModel, scale_nn_to_centipawns};
+use nnue::stockfish::halfkp::{scale_nn_to_centipawns, SfHalfKpFullModel};
 
 // NNUE weights (Stockfish HalfKP 256x2-32-32-1)
 const NNUE_WEIGHTS: &[u8] = include_bytes!("nn.nnue");
@@ -210,8 +210,18 @@ fn nnue_evaluate(board: &Board) -> i32 {
     let bk = nnue::Square::from_index(bk_sq.to_index());
     let mut state = model.new_state(wk, bk);
     for &chess_color in &[Color::White, Color::Black] {
-        let nc = if chess_color == Color::White { nnue::Color::White } else { nnue::Color::Black };
-        for &chess_piece in &[Piece::Pawn, Piece::Knight, Piece::Bishop, Piece::Rook, Piece::Queen] {
+        let nc = if chess_color == Color::White {
+            nnue::Color::White
+        } else {
+            nnue::Color::Black
+        };
+        for &chess_piece in &[
+            Piece::Pawn,
+            Piece::Knight,
+            Piece::Bishop,
+            Piece::Rook,
+            Piece::Queen,
+        ] {
             let np = match chess_piece {
                 Piece::Pawn => nnue::Piece::Pawn,
                 Piece::Knight => nnue::Piece::Knight,
@@ -229,7 +239,11 @@ fn nnue_evaluate(board: &Board) -> i32 {
             }
         }
     }
-    let stm = if board.side_to_move() == Color::White { nnue::Color::White } else { nnue::Color::Black };
+    let stm = if board.side_to_move() == Color::White {
+        nnue::Color::White
+    } else {
+        nnue::Color::Black
+    };
     scale_nn_to_centipawns(state.activate(stm)[0])
 }
 
@@ -255,11 +269,6 @@ const CAPTURE_HISTORY_LIMIT: i32 = 16_000;
 const MAX_TIME_SEARCH_DEPTH: i32 = 64;
 const PHASE_TOTAL: i32 = 24;
 const SEE_PRUNE_MARGIN: i32 = 80;
-
-// Pawn correction history: indexed by [color][pawn_hash & MASK]
-const PAWN_CORR_SIZE: usize = 1 << 14; // 16K entries per side
-const PAWN_CORR_MASK: usize = PAWN_CORR_SIZE - 1;
-const PAWN_CORR_LIMIT: i32 = 1024; // clamp correction values
 
 const EXACT: u8 = 0;
 const LOWER_BOUND: u8 = 1;
@@ -522,6 +531,23 @@ impl Default for TTEntry {
     }
 }
 
+fn tt_pruning_eval(raw_eval: i32, tt_entry: Option<TTEntry>) -> i32 {
+    let Some(entry) = tt_entry else {
+        return raw_eval;
+    };
+
+    if entry.score.abs() >= MATE_SCORE - 512 {
+        return raw_eval;
+    }
+
+    match entry.flag {
+        EXACT => entry.score,
+        LOWER_BOUND if entry.score > raw_eval => entry.score,
+        UPPER_BOUND if entry.score < raw_eval => entry.score,
+        _ => raw_eval,
+    }
+}
+
 #[derive(Clone, Copy)]
 struct EvalCacheEntry {
     key: u64,
@@ -631,7 +657,6 @@ struct RustAlphaBetaEngine {
     eval_stack: Vec<i32>,                // static eval at each ply for improving detection
     eval_cache: Vec<EvalCacheEntry>,
     pawn_cache: Vec<PawnCacheEntry>,
-    pawn_corr_hist: Vec<i32>, // pawn correction history [2 * PAWN_CORR_SIZE]
     deadline: Option<Instant>,
     stopped: bool,
     opening_book: HashMap<u64, &'static str>,
@@ -652,7 +677,6 @@ impl RustAlphaBetaEngine {
             eval_stack: vec![0; KILLER_PLY_CAPACITY],
             eval_cache: vec![EvalCacheEntry::default(); EVAL_CACHE_SIZE],
             pawn_cache: vec![PawnCacheEntry::default(); PAWN_CACHE_SIZE],
-            pawn_corr_hist: vec![0i32; 2 * PAWN_CORR_SIZE],
             deadline: None,
             stopped: false,
             opening_book: build_opening_book(),
@@ -1027,7 +1051,6 @@ impl RustAlphaBetaEngine {
             eval_stack: self.eval_stack.clone(),
             eval_cache: self.eval_cache.clone(),
             pawn_cache: self.pawn_cache.clone(),
-            pawn_corr_hist: self.pawn_corr_hist.clone(),
             deadline: self.deadline,
             stopped: false,
             opening_book: HashMap::new(), // Workers don't need the opening book
@@ -1158,7 +1181,7 @@ impl RustAlphaBetaEngine {
             }
         }
 
-        // IIR: reduce depth at cut nodes with no TT move and no heavy prior reduction
+        // IIR: reduce depth by 1 when no TT move (saves expensive NNUE IID sub-searches)
         if tt_move.is_none()
             && effective_depth >= 6
             && !in_check_now
@@ -1168,25 +1191,26 @@ impl RustAlphaBetaEngine {
             effective_depth -= 1;
         }
 
-        let static_eval = if !in_check_now {
+        let raw_static_eval = if !in_check_now {
             Some(self.evaluate(board))
         } else {
             None
         };
+        let static_eval = raw_static_eval.map(|eval| tt_pruning_eval(eval, tt_entry));
 
-        // Store static eval for improving detection
+        // Store the raw eval for improving detection. TT-refined eval is used only for pruning.
         self.ensure_ply_capacity(ply + 2);
-        self.eval_stack[ply] = static_eval.unwrap_or(0);
+        self.eval_stack[ply] = raw_static_eval.unwrap_or(0);
         let improving = !in_check_now
             && ply >= 2
-            && static_eval.map_or(false, |e| e > self.eval_stack[ply - 2]);
+            && raw_static_eval.map_or(false, |e| e > self.eval_stack[ply - 2]);
 
         if let Some(eval) = static_eval {
             if effective_depth <= 4
                 && eval >= beta + REVERSE_FUTILITY_MARGIN[effective_depth as usize]
                 && beta < MATE_SCORE - 1_000
             {
-                return Some(eval);
+                return Some((2 * beta + eval) / 3);
             }
             if effective_depth <= 3
                 && eval + RAZOR_MARGIN[effective_depth as usize] <= alpha
@@ -1225,10 +1249,7 @@ impl RustAlphaBetaEngine {
         }
 
         // ProbCut: shallow search with raised beta on captures to detect likely cutoffs
-        if effective_depth >= 5
-            && !in_check_now
-            && beta.abs() < MATE_SCORE - 512
-        {
+        if effective_depth >= 5 && !in_check_now && beta.abs() < MATE_SCORE - 512 {
             let probcut_beta = beta + 200;
             let probcut_depth = effective_depth - 4;
             let mut probcut_moves = self.scored_moves(board, tt_move, ply, true);
@@ -1370,16 +1391,14 @@ impl RustAlphaBetaEngine {
                     && !gives_check_move
                 {
                     let mut reduction = late_move_reduction(effective_depth, move_count);
-                    // Reduce more at cut nodes without TT move
+                    // Reduce less for countermoves and killers
+                    let mk = move_key(chess_move) as usize;
                     if cut_node && tt_move.is_none() {
                         reduction += 1;
                     }
-                    // Reduce less for TT move
                     if tt_move == Some(chess_move) {
                         reduction = (reduction - 1).max(0);
                     }
-                    // Reduce less for countermoves and killers
-                    let mk = move_key(chess_move) as usize;
                     if self.killer_moves.get(ply).map_or(false, |k| {
                         k[0] == Some(chess_move) || k[1] == Some(chess_move)
                     }) {
@@ -1389,15 +1408,14 @@ impl RustAlphaBetaEngine {
                     if !improving {
                         reduction += 1;
                     }
-                    // Reduce less if parent was already heavily reduced
-                    if prior_reduction >= 2 {
-                        reduction = (reduction - 1).max(0);
-                    }
                     // Reduce more for moves with bad history
                     let hist = self.history_heuristic[mk];
                     if hist < -2000 {
                         reduction += 1;
                     } else if hist > 8000 {
+                        reduction = (reduction - 1).max(0);
+                    }
+                    if prior_reduction >= 2 {
                         reduction = (reduction - 1).max(0);
                     }
                     child_prior_reduction = reduction;
@@ -1500,7 +1518,6 @@ impl RustAlphaBetaEngine {
         if existing.key == 0 || new_entry.depth >= existing.depth || existing.key == tt_key {
             self.tt[tt_idx] = new_entry;
         }
-
         Some(best_score)
     }
 
@@ -1628,7 +1645,10 @@ impl RustAlphaBetaEngine {
 
         // Use NNUE evaluation (much stronger than HCE)
         let score = nnue_evaluate(board);
-        self.eval_cache[eval_idx] = EvalCacheEntry { key: board_key, score };
+        self.eval_cache[eval_idx] = EvalCacheEntry {
+            key: board_key,
+            score,
+        };
         return score;
 
         // HCE fallback (unreachable when NNUE is loaded)

@@ -1186,7 +1186,7 @@ impl RustAlphaBetaEngine {
                 && eval >= beta + REVERSE_FUTILITY_MARGIN[effective_depth as usize]
                 && beta < MATE_SCORE - 1_000
             {
-                return Some(eval);
+                return Some((2 * beta + eval) / 3);
             }
             if effective_depth <= 3
                 && eval + RAZOR_MARGIN[effective_depth as usize] <= alpha
@@ -1367,6 +1367,9 @@ impl RustAlphaBetaEngine {
                     let mut reduction = late_move_reduction(effective_depth, move_count);
                     // Reduce less for countermoves and killers
                     let mk = move_key(chess_move) as usize;
+                    if tt_move == Some(chess_move) {
+                        reduction = (reduction - 1).max(0);
+                    }
                     if self.killer_moves.get(ply).map_or(false, |k| {
                         k[0] == Some(chess_move) || k[1] == Some(chess_move)
                     }) {

@@ -242,8 +242,8 @@ const KILLER_PLY_CAPACITY: usize = 128;
 const MAX_ROOT_THREADS: usize = 8;
 
 // Fixed-size hash tables (power-of-2 for fast masking)
-const TT_SIZE: usize = 1 << 21; // 2M entries
-const TT_MASK: usize = TT_SIZE - 1;
+const TT_SIZE: usize = 1 << 23; // 8M entries (128MB)
+const TT_MASK: usize = TT_SIZE - 1; // 8M entries (128MB)
 const EVAL_CACHE_SIZE: usize = 1 << 21; // 2M entries (NNUE eval is slower, cache hits save more)
 const EVAL_CACHE_MASK: usize = EVAL_CACHE_SIZE - 1;
 const PAWN_CACHE_SIZE: usize = 1 << 18; // 256K entries

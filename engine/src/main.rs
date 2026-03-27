@@ -1180,12 +1180,16 @@ impl RustAlphaBetaEngine {
                 }
             }
         }
+        let tt_pv = tt_entry.map_or(false, |entry| {
+            entry.flag == EXACT && entry.depth >= effective_depth - 2
+        });
 
         // IIR: reduce depth by 1 when no TT move (saves expensive NNUE IID sub-searches)
         if tt_move.is_none()
             && effective_depth >= 6
             && !in_check_now
             && cut_node
+            && !tt_pv
             && prior_reduction <= 1
         {
             effective_depth -= 1;
@@ -1393,6 +1397,9 @@ impl RustAlphaBetaEngine {
                     let mut reduction = late_move_reduction(effective_depth, move_count);
                     // Reduce less for countermoves and killers
                     let mk = move_key(chess_move) as usize;
+                    if tt_pv {
+                        reduction = (reduction - 1).max(0);
+                    }
                     if cut_node && tt_move.is_none() {
                         reduction += 1;
                     }

@@ -236,7 +236,7 @@ if [ -f "$OPENINGS" ]; then
     CMD="$CMD -openings file=$OPENINGS format=epd order=random"
 fi
 
-echo "Gauntlet: 5 SF levels ($L1-$L5) x $GAMES_PER_OPPONENT games max (parallel)..." >&2
+echo "Gauntlet: SF levels ($ELO_LEVELS) x $GAMES_PER_OPPONENT games max (parallel)..." >&2
 echo "Running: $CMD" >&2
 ${TIMEOUT:+$TIMEOUT 1200} $CMD > "$GAUNTLET_LOG" 2>&1 || {
     echo "WARNING: Gauntlet timed out or finished." >&2

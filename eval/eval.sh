@@ -38,11 +38,11 @@ PGN_OUT="eval/games.pgn"
 
 # Parallel execution settings (Dynamically calculated: ~48% of total cores)
 TOTAL_CORES=$(nproc 2>/dev/null || echo 1)
-CONCURRENCY=$(( TOTAL_CORES * 48 / 100 ))
+CONCURRENCY=$(( TOTAL_CORES * 90 / 100 ))
 if [ "$CONCURRENCY" -lt 1 ]; then CONCURRENCY=1; fi
 
 # Time Control: 40 moves in 2 minutes (40/120)
-TC="40/120"
+TC="40/24"
 # Stockfish gets 1/5th the time (120 / 5 = 24)
 SF_TC="40/24"
 

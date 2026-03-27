@@ -190,7 +190,7 @@ use chess::{
     get_bishop_moves, get_king_moves, get_knight_moves, get_pawn_attacks, get_rook_moves, BitBoard,
     Board, BoardStatus, ChessMove, Color, File, MoveGen, Piece, Rank, Square,
 };
-use nnue::stockfish::halfkp::{SfHalfKpFullModel, scale_nn_to_centipawns};
+use nnue::stockfish::halfkp::{scale_nn_to_centipawns, SfHalfKpFullModel};
 
 // NNUE weights (Stockfish HalfKP 256x2-32-32-1)
 const NNUE_WEIGHTS: &[u8] = include_bytes!("nn.nnue");
@@ -210,8 +210,18 @@ fn nnue_evaluate(board: &Board) -> i32 {
     let bk = nnue::Square::from_index(bk_sq.to_index());
     let mut state = model.new_state(wk, bk);
     for &chess_color in &[Color::White, Color::Black] {
-        let nc = if chess_color == Color::White { nnue::Color::White } else { nnue::Color::Black };
-        for &chess_piece in &[Piece::Pawn, Piece::Knight, Piece::Bishop, Piece::Rook, Piece::Queen] {
+        let nc = if chess_color == Color::White {
+            nnue::Color::White
+        } else {
+            nnue::Color::Black
+        };
+        for &chess_piece in &[
+            Piece::Pawn,
+            Piece::Knight,
+            Piece::Bishop,
+            Piece::Rook,
+            Piece::Queen,
+        ] {
             let np = match chess_piece {
                 Piece::Pawn => nnue::Piece::Pawn,
                 Piece::Knight => nnue::Piece::Knight,
@@ -229,7 +239,11 @@ fn nnue_evaluate(board: &Board) -> i32 {
             }
         }
     }
-    let stm = if board.side_to_move() == Color::White { nnue::Color::White } else { nnue::Color::Black };
+    let stm = if board.side_to_move() == Color::White {
+        nnue::Color::White
+    } else {
+        nnue::Color::Black
+    };
     scale_nn_to_centipawns(state.activate(stm)[0])
 }
 
@@ -514,6 +528,23 @@ impl Default for TTEntry {
             flag: 0,
             best_move: None,
         }
+    }
+}
+
+fn tt_pruning_eval(raw_eval: i32, tt_entry: Option<TTEntry>) -> i32 {
+    let Some(entry) = tt_entry else {
+        return raw_eval;
+    };
+
+    if entry.score.abs() >= MATE_SCORE - 512 {
+        return raw_eval;
+    }
+
+    match entry.flag {
+        EXACT => entry.score,
+        LOWER_BOUND if entry.score > raw_eval => entry.score,
+        UPPER_BOUND if entry.score < raw_eval => entry.score,
+        _ => raw_eval,
     }
 }
 
@@ -1150,18 +1181,19 @@ impl RustAlphaBetaEngine {
             effective_depth -= 1;
         }
 
-        let static_eval = if !in_check_now {
+        let raw_static_eval = if !in_check_now {
             Some(self.evaluate(board))
         } else {
             None
         };
+        let static_eval = raw_static_eval.map(|eval| tt_pruning_eval(eval, tt_entry));
 
-        // Store static eval for improving detection
+        // Keep improving based on the fresh eval; use TT-refined eval only for pruning.
         self.ensure_ply_capacity(ply + 2);
-        self.eval_stack[ply] = static_eval.unwrap_or(0);
+        self.eval_stack[ply] = raw_static_eval.unwrap_or(0);
         let improving = !in_check_now
             && ply >= 2
-            && static_eval.map_or(false, |e| e > self.eval_stack[ply - 2]);
+            && raw_static_eval.map_or(false, |e| e > self.eval_stack[ply - 2]);
 
         if let Some(eval) = static_eval {
             if effective_depth <= 4
@@ -1182,6 +1214,7 @@ impl RustAlphaBetaEngine {
             && !in_check_now
             && has_non_pawn_material(board, board.side_to_move())
             && beta < MATE_SCORE - 1_000
+            && static_eval.map_or(false, |eval| eval >= beta)
         {
             if let Some(null_board) = board.null_move() {
                 let reduction = 2 + effective_depth / 3;
@@ -1204,10 +1237,7 @@ impl RustAlphaBetaEngine {
         }
 
         // ProbCut: shallow search with raised beta on captures to detect likely cutoffs
-        if effective_depth >= 5
-            && !in_check_now
-            && beta.abs() < MATE_SCORE - 512
-        {
+        if effective_depth >= 5 && !in_check_now && beta.abs() < MATE_SCORE - 512 {
             let probcut_beta = beta + 200;
             let probcut_depth = effective_depth - 4;
             let mut probcut_moves = self.scored_moves(board, tt_move, ply, true);
@@ -1587,7 +1617,10 @@ impl RustAlphaBetaEngine {
 
         // Use NNUE evaluation (much stronger than HCE)
         let score = nnue_evaluate(board);
-        self.eval_cache[eval_idx] = EvalCacheEntry { key: board_key, score };
+        self.eval_cache[eval_idx] = EvalCacheEntry {
+            key: board_key,
+            score,
+        };
         return score;
 
         // HCE fallback (unreachable when NNUE is loaded)

@@ -78,3 +78,4 @@ b18f46e	2969.5	10	keep	nnue-rs NNUE (HalfKP 256x2-32-32-1) on contempt=0 optimiz
 a841daf	3225.5	10	keep	IIR on NNUE base — 8W/2D/0L ZERO LOSSES! NEW ALL-TIME BEST!
 0742e84	3139.9	10	discard	lazy NNUE (material eval for pruning) — 8W/1D/1L, material-only pruning too imprecise
 239ac15	3332.4	38	keep	SPRT baseline on new eval: 35W/2D/1L in 38 games = 3332.4! Statistically significant!
+8a62fa7	3148.4	235	discard	TT pruning eval + zero-window null-move guard — SPRT passed but trailed the stronger published NNUE+IIR line

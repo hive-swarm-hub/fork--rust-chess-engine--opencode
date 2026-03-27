@@ -250,10 +250,6 @@ const PAWN_CACHE_SIZE: usize = 1 << 18; // 256K entries
 const PAWN_CACHE_MASK: usize = PAWN_CACHE_SIZE - 1;
 
 const HISTORY_LIMIT: i32 = 32_000;
-const PAWN_CORR_SIZE: usize = 1 << 14; // 16K entries per color
-const PAWN_CORR_MASK: usize = PAWN_CORR_SIZE - 1;
-const PAWN_CORR_LIMIT: i32 = 8_192;
-const PAWN_CORR_GRAIN: i32 = 256; // divide stored value by this to get centipawn correction
 const CAPTURE_HISTORY_PIECES: usize = 6;
 const CAPTURE_HISTORY_LIMIT: i32 = 16_000;
 const MAX_TIME_SEARCH_DEPTH: i32 = 64;
@@ -521,6 +517,23 @@ impl Default for TTEntry {
     }
 }
 
+fn tt_pruning_eval(raw_eval: i32, tt_entry: Option<TTEntry>) -> i32 {
+    let Some(entry) = tt_entry else {
+        return raw_eval;
+    };
+
+    if entry.score.abs() >= MATE_SCORE - 512 {
+        return raw_eval;
+    }
+
+    match entry.flag {
+        EXACT => entry.score,
+        LOWER_BOUND if entry.score > raw_eval => entry.score,
+        UPPER_BOUND if entry.score < raw_eval => entry.score,
+        _ => raw_eval,
+    }
+}
+
 #[derive(Clone, Copy)]
 struct EvalCacheEntry {
     key: u64,
@@ -628,7 +641,6 @@ struct RustAlphaBetaEngine {
     countermove: Vec<Option<ChessMove>>, // indexed by previous move's move_key
     move_stack: Vec<Option<ChessMove>>,  // move played at each ply for countermove tracking
     eval_stack: Vec<i32>,                // static eval at each ply for improving detection
-    pawn_corr_hist: Vec<i32>,            // pawn correction history [color][pawn_hash % size]
     eval_cache: Vec<EvalCacheEntry>,
     pawn_cache: Vec<PawnCacheEntry>,
     deadline: Option<Instant>,
@@ -649,7 +661,6 @@ impl RustAlphaBetaEngine {
             countermove: vec![None; HISTORY_SIZE],
             move_stack: vec![None; KILLER_PLY_CAPACITY],
             eval_stack: vec![0; KILLER_PLY_CAPACITY],
-            pawn_corr_hist: vec![0; 2 * PAWN_CORR_SIZE],
             eval_cache: vec![EvalCacheEntry::default(); EVAL_CACHE_SIZE],
             pawn_cache: vec![PawnCacheEntry::default(); PAWN_CACHE_SIZE],
             deadline: None,
@@ -1022,7 +1033,6 @@ impl RustAlphaBetaEngine {
             countermove: self.countermove.clone(),
             move_stack: self.move_stack.clone(),
             eval_stack: self.eval_stack.clone(),
-            pawn_corr_hist: self.pawn_corr_hist.clone(),
             eval_cache: self.eval_cache.clone(),
             pawn_cache: self.pawn_cache.clone(),
             deadline: self.deadline,
@@ -1157,29 +1167,26 @@ impl RustAlphaBetaEngine {
             effective_depth -= 1;
         }
 
-        let static_eval = if !in_check_now {
-            let raw = self.evaluate(board);
-            let pawn_corr_key = color_index(board.side_to_move()) * PAWN_CORR_SIZE
-                + (board.get_pawn_hash() as usize & PAWN_CORR_MASK);
-            let correction = self.pawn_corr_hist[pawn_corr_key] / PAWN_CORR_GRAIN;
-            Some((raw + correction).clamp(-MATE_SCORE + 1, MATE_SCORE - 1))
+        let raw_static_eval = if !in_check_now {
+            Some(self.evaluate(board))
         } else {
             None
         };
+        let static_eval = raw_static_eval.map(|eval| tt_pruning_eval(eval, tt_entry));
 
-        // Store static eval for improving detection
+        // Store the raw eval for improving detection. TT-refined eval is used only for pruning.
         self.ensure_ply_capacity(ply + 2);
-        self.eval_stack[ply] = static_eval.unwrap_or(0);
+        self.eval_stack[ply] = raw_static_eval.unwrap_or(0);
         let improving = !in_check_now
             && ply >= 2
-            && static_eval.map_or(false, |e| e > self.eval_stack[ply - 2]);
+            && raw_static_eval.map_or(false, |e| e > self.eval_stack[ply - 2]);
 
         if let Some(eval) = static_eval {
             if effective_depth <= 4
                 && eval >= beta + REVERSE_FUTILITY_MARGIN[effective_depth as usize]
                 && beta < MATE_SCORE - 1_000
             {
-                return Some(eval);
+                return Some((2 * beta + eval) / 3);
             }
             if effective_depth <= 3
                 && eval + RAZOR_MARGIN[effective_depth as usize] <= alpha
@@ -1193,7 +1200,7 @@ impl RustAlphaBetaEngine {
             && !in_check_now
             && has_non_pawn_material(board, board.side_to_move())
             && beta < MATE_SCORE - 1_000
-            && static_eval.map_or(false, |e| e >= beta)
+            && static_eval.map_or(false, |eval| eval >= beta)
         {
             if let Some(null_board) = board.null_move() {
                 let reduction = 2 + effective_depth / 3;
@@ -1360,6 +1367,9 @@ impl RustAlphaBetaEngine {
                     let mut reduction = late_move_reduction(effective_depth, move_count);
                     // Reduce less for countermoves and killers
                     let mk = move_key(chess_move) as usize;
+                    if tt_move == Some(chess_move) {
+                        reduction = (reduction - 1).max(0);
+                    }
                     if self.killer_moves.get(ply).map_or(false, |k| {
                         k[0] == Some(chess_move) || k[1] == Some(chess_move)
                     }) {
@@ -1452,20 +1462,6 @@ impl RustAlphaBetaEngine {
                 self.terminal_score(board, ply, repetition)
                     .unwrap_or(DRAW_SCORE),
             );
-        }
-
-        // Update pawn correction history: adjust based on difference between static eval and search score
-        if let Some(eval) = static_eval {
-            if !in_check_now && best_score.abs() < MATE_SCORE - 1_000 {
-                let pawn_corr_key = color_index(board.side_to_move()) * PAWN_CORR_SIZE
-                    + (board.get_pawn_hash() as usize & PAWN_CORR_MASK);
-                let diff = best_score - eval;
-                let bonus = (diff * effective_depth.max(1) as i32)
-                    .clamp(-PAWN_CORR_LIMIT, PAWN_CORR_LIMIT);
-                let h = &mut self.pawn_corr_hist[pawn_corr_key];
-                *h += bonus - *h * bonus.abs() / PAWN_CORR_LIMIT;
-                *h = (*h).clamp(-PAWN_CORR_LIMIT, PAWN_CORR_LIMIT);
-            }
         }
 
         let flag = if best_score <= alpha_original {

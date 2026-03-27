@@ -1200,7 +1200,6 @@ impl RustAlphaBetaEngine {
             && !in_check_now
             && has_non_pawn_material(board, board.side_to_move())
             && beta < MATE_SCORE - 1_000
-            && beta == alpha + 1
             && static_eval.map_or(false, |eval| eval >= beta)
         {
             if let Some(null_board) = board.null_move() {

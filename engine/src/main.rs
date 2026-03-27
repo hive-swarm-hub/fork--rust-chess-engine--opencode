@@ -256,6 +256,11 @@ const MAX_TIME_SEARCH_DEPTH: i32 = 64;
 const PHASE_TOTAL: i32 = 24;
 const SEE_PRUNE_MARGIN: i32 = 80;
 
+// Pawn correction history: indexed by [color][pawn_hash & MASK]
+const PAWN_CORR_SIZE: usize = 1 << 14; // 16K entries per side
+const PAWN_CORR_MASK: usize = PAWN_CORR_SIZE - 1;
+const PAWN_CORR_LIMIT: i32 = 1024; // clamp correction values
+
 const EXACT: u8 = 0;
 const LOWER_BOUND: u8 = 1;
 const UPPER_BOUND: u8 = 2;
@@ -626,6 +631,7 @@ struct RustAlphaBetaEngine {
     eval_stack: Vec<i32>,                // static eval at each ply for improving detection
     eval_cache: Vec<EvalCacheEntry>,
     pawn_cache: Vec<PawnCacheEntry>,
+    pawn_corr_hist: Vec<i32>, // pawn correction history [2 * PAWN_CORR_SIZE]
     deadline: Option<Instant>,
     stopped: bool,
     opening_book: HashMap<u64, &'static str>,
@@ -646,6 +652,7 @@ impl RustAlphaBetaEngine {
             eval_stack: vec![0; KILLER_PLY_CAPACITY],
             eval_cache: vec![EvalCacheEntry::default(); EVAL_CACHE_SIZE],
             pawn_cache: vec![PawnCacheEntry::default(); PAWN_CACHE_SIZE],
+            pawn_corr_hist: vec![0i32; 2 * PAWN_CORR_SIZE],
             deadline: None,
             stopped: false,
             opening_book: build_opening_book(),
@@ -849,7 +856,7 @@ impl RustAlphaBetaEngine {
         root_moves.sort_unstable_by(|left, right| right.score.cmp(&left.score));
 
         if !self.should_parallelize_root(depth, root_moves.len()) {
-            let score = self.negamax(board, depth, alpha, beta, 0, repetition)?;
+            let score = self.negamax(board, depth, alpha, beta, 0, 0, repetition)?;
             let tt_idx2 = board_hash(board) as usize & TT_MASK;
             let best_move = {
                 let entry = &self.tt[tt_idx2];
@@ -880,7 +887,7 @@ impl RustAlphaBetaEngine {
         let first_hash = board_hash(&first_child);
         repetition.push(first_hash);
         let mut best_score =
-            -self.negamax(&first_child, depth - 1, -beta, -alpha, 1, repetition)?;
+            -self.negamax(&first_child, depth - 1, -beta, -alpha, 1, 0, repetition)?;
         repetition.pop(first_hash);
         let mut best_move = first_move;
         let current_alpha = alpha.max(best_score);
@@ -969,6 +976,7 @@ impl RustAlphaBetaEngine {
                 -local_alpha - 1,
                 -local_alpha,
                 1,
+                0,
                 &mut local_repetition,
             )?;
             if score > local_alpha {
@@ -978,6 +986,7 @@ impl RustAlphaBetaEngine {
                     -beta,
                     -local_alpha,
                     1,
+                    0,
                     &mut local_repetition,
                 )?;
             }
@@ -1018,6 +1027,7 @@ impl RustAlphaBetaEngine {
             eval_stack: self.eval_stack.clone(),
             eval_cache: self.eval_cache.clone(),
             pawn_cache: self.pawn_cache.clone(),
+            pawn_corr_hist: self.pawn_corr_hist.clone(),
             deadline: self.deadline,
             stopped: false,
             opening_book: HashMap::new(), // Workers don't need the opening book
@@ -1072,6 +1082,7 @@ impl RustAlphaBetaEngine {
         mut alpha: i32,
         mut beta: i32,
         ply: usize,
+        prior_reduction: i32,
         repetition: &mut RepetitionTracker,
     ) -> Option<i32> {
         if self.should_stop() {
@@ -1108,6 +1119,8 @@ impl RustAlphaBetaEngine {
 
         let in_check_now = in_check(board);
         let mut effective_depth = depth;
+        // Approximate Stockfish's cut-node gating with zero-window searches.
+        let cut_node = beta == alpha + 1;
         // Cap check extension to prevent infinite check sequences
         if in_check_now && ply < 80 {
             effective_depth += 1;
@@ -1145,23 +1158,37 @@ impl RustAlphaBetaEngine {
             }
         }
 
-        // IIR: reduce depth by 1 when no TT move (saves expensive NNUE IID sub-searches)
-        if tt_move.is_none() && effective_depth >= 4 && !in_check_now {
+        // IIR: reduce depth at cut nodes with no TT move and no heavy prior reduction
+        if tt_move.is_none()
+            && effective_depth >= 6
+            && !in_check_now
+            && cut_node
+            && prior_reduction <= 1
+        {
             effective_depth -= 1;
         }
 
-        let static_eval = if !in_check_now {
+        let raw_static_eval = if !in_check_now {
             Some(self.evaluate(board))
         } else {
             None
         };
 
-        // Store static eval for improving detection
+        // Apply pawn correction history to get adjusted static eval for pruning
+        let static_eval = raw_static_eval.map(|raw| {
+            let stm = color_index(board.side_to_move());
+            let pawn_hash = board.get_pawn_hash();
+            let corr_idx = stm * PAWN_CORR_SIZE + (pawn_hash as usize & PAWN_CORR_MASK);
+            let corr = self.pawn_corr_hist[corr_idx];
+            raw + corr / 256
+        });
+
+        // Store raw static eval for improving detection (avoids feedback loops)
         self.ensure_ply_capacity(ply + 2);
-        self.eval_stack[ply] = static_eval.unwrap_or(0);
+        self.eval_stack[ply] = raw_static_eval.unwrap_or(0);
         let improving = !in_check_now
             && ply >= 2
-            && static_eval.map_or(false, |e| e > self.eval_stack[ply - 2]);
+            && raw_static_eval.map_or(false, |e| e > self.eval_stack[ply - 2]);
 
         if let Some(eval) = static_eval {
             if effective_depth <= 4
@@ -1180,8 +1207,10 @@ impl RustAlphaBetaEngine {
 
         if effective_depth >= 3
             && !in_check_now
+            && cut_node
             && has_non_pawn_material(board, board.side_to_move())
             && beta < MATE_SCORE - 1_000
+            && static_eval.map_or(false, |eval| eval >= beta)
         {
             if let Some(null_board) = board.null_move() {
                 let reduction = 2 + effective_depth / 3;
@@ -1193,6 +1222,7 @@ impl RustAlphaBetaEngine {
                     -beta,
                     -beta + 1,
                     ply + 1,
+                    0,
                     repetition,
                 );
                 repetition.pop(null_hash);
@@ -1227,6 +1257,7 @@ impl RustAlphaBetaEngine {
                     -probcut_beta,
                     -probcut_beta + 1,
                     ply + 1,
+                    0,
                     repetition,
                 );
                 repetition.pop(child_hash);
@@ -1334,11 +1365,13 @@ impl RustAlphaBetaEngine {
                         -beta,
                         -alpha,
                         ply + 1,
+                        0,
                         repetition,
                     )?);
                 }
 
                 let mut search_depth = effective_depth - 1;
+                let mut child_prior_reduction = 0;
                 if effective_depth >= 4
                     && move_count > 3
                     && is_quiet
@@ -1346,6 +1379,14 @@ impl RustAlphaBetaEngine {
                     && !gives_check_move
                 {
                     let mut reduction = late_move_reduction(effective_depth, move_count);
+                    // Reduce more at cut nodes without TT move
+                    if cut_node && tt_move.is_none() {
+                        reduction += 1;
+                    }
+                    // Reduce less for TT move
+                    if tt_move == Some(chess_move) {
+                        reduction = (reduction - 1).max(0);
+                    }
                     // Reduce less for countermoves and killers
                     let mk = move_key(chess_move) as usize;
                     if self.killer_moves.get(ply).map_or(false, |k| {
@@ -1357,6 +1398,10 @@ impl RustAlphaBetaEngine {
                     if !improving {
                         reduction += 1;
                     }
+                    // Reduce less if parent was already heavily reduced
+                    if prior_reduction >= 2 {
+                        reduction = (reduction - 1).max(0);
+                    }
                     // Reduce more for moves with bad history
                     let hist = self.history_heuristic[mk];
                     if hist < -2000 {
@@ -1364,6 +1409,7 @@ impl RustAlphaBetaEngine {
                     } else if hist > 8000 {
                         reduction = (reduction - 1).max(0);
                     }
+                    child_prior_reduction = reduction;
                     search_depth = (search_depth - reduction).max(0);
                 }
 
@@ -1373,6 +1419,7 @@ impl RustAlphaBetaEngine {
                     -alpha - 1,
                     -alpha,
                     ply + 1,
+                    child_prior_reduction,
                     repetition,
                 )?;
                 if score > alpha && search_depth != effective_depth - 1 {
@@ -1382,6 +1429,7 @@ impl RustAlphaBetaEngine {
                         -alpha - 1,
                         -alpha,
                         ply + 1,
+                        0,
                         repetition,
                     )?;
                 }
@@ -1392,6 +1440,7 @@ impl RustAlphaBetaEngine {
                         -beta,
                         -alpha,
                         ply + 1,
+                        0,
                         repetition,
                     )?;
                 }
@@ -1460,6 +1509,20 @@ impl RustAlphaBetaEngine {
         if existing.key == 0 || new_entry.depth >= existing.depth || existing.key == tt_key {
             self.tt[tt_idx] = new_entry;
         }
+
+        // Update pawn correction history based on search result vs raw eval
+        if !in_check_now {
+            if let Some(raw_eval) = raw_static_eval {
+                let divergence = (best_score - raw_eval).clamp(-64, 64);
+                let bonus = divergence * effective_depth / 4;
+                let stm = color_index(board.side_to_move());
+                let pawn_hash = board.get_pawn_hash();
+                let corr_idx = stm * PAWN_CORR_SIZE + (pawn_hash as usize & PAWN_CORR_MASK);
+                let hist = &mut self.pawn_corr_hist[corr_idx];
+                *hist += bonus - *hist * bonus.abs() / PAWN_CORR_LIMIT;
+            }
+        }
+
         Some(best_score)
     }
 
@@ -1547,7 +1610,7 @@ impl RustAlphaBetaEngine {
             let child = board.make_move_new(chess_move);
             let child_hash = board_hash(&child);
             repetition.push(child_hash);
-            let score = -self.negamax(&child, depth - 1, -beta, -alpha, ply + 1, repetition)?;
+            let score = -self.negamax(&child, depth - 1, -beta, -alpha, ply + 1, 0, repetition)?;
             repetition.pop(child_hash);
 
             if score > best_score {

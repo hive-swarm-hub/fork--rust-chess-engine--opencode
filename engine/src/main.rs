@@ -266,6 +266,9 @@ const PAWN_CACHE_MASK: usize = PAWN_CACHE_SIZE - 1;
 const HISTORY_LIMIT: i32 = 32_000;
 const CAPTURE_HISTORY_PIECES: usize = 6;
 const CAPTURE_HISTORY_LIMIT: i32 = 16_000;
+const CONT_HIST_KEY_SIZE: usize = 6 * 64; // piece_index * 64 + sq_index
+const CONT_HIST_SIZE: usize = CONT_HIST_KEY_SIZE * CONT_HIST_KEY_SIZE; // 384*384 = 147,456
+const CONT_HIST_LIMIT: i32 = 16_000;
 const MAX_TIME_SEARCH_DEPTH: i32 = 64;
 const PHASE_TOTAL: i32 = 24;
 const SEE_PRUNE_MARGIN: i32 = 80;
@@ -653,6 +656,7 @@ struct RustAlphaBetaEngine {
     history_heuristic: Vec<i32>,
     capture_history: Vec<i16>,
     countermove: Vec<Option<ChessMove>>, // indexed by previous move's move_key
+    cont_hist: Vec<i16>,                 // continuation history: [prev_piece_sq * KEY + curr_piece_sq]
     move_stack: Vec<Option<ChessMove>>,  // move played at each ply for countermove tracking
     eval_stack: Vec<i32>,                // static eval at each ply for improving detection
     eval_cache: Vec<EvalCacheEntry>,
@@ -673,6 +677,7 @@ impl RustAlphaBetaEngine {
             history_heuristic: vec![0; HISTORY_SIZE],
             capture_history: vec![0; HISTORY_SIZE * CAPTURE_HISTORY_PIECES],
             countermove: vec![None; HISTORY_SIZE],
+            cont_hist: vec![0i16; CONT_HIST_SIZE],
             move_stack: vec![None; KILLER_PLY_CAPACITY],
             eval_stack: vec![0; KILLER_PLY_CAPACITY],
             eval_cache: vec![EvalCacheEntry::default(); EVAL_CACHE_SIZE],
@@ -1047,6 +1052,7 @@ impl RustAlphaBetaEngine {
             history_heuristic: self.history_heuristic.clone(),
             capture_history: self.capture_history.clone(),
             countermove: self.countermove.clone(),
+            cont_hist: self.cont_hist.clone(),
             move_stack: self.move_stack.clone(),
             eval_stack: self.eval_stack.clone(),
             eval_cache: self.eval_cache.clone(),
@@ -1471,14 +1477,34 @@ impl RustAlphaBetaEngine {
                     self.record_killer(chess_move, ply);
                     self.update_history(chess_move, bonus);
                     // Record countermove: this move refutes the previous move
+                    // Also update 1-ply continuation history
+                    let cont_ctx = if ply > 0 {
+                        self.move_stack[ply - 1].and_then(|prev_move| {
+                            let prev_piece = board.piece_on(prev_move.get_dest())?;
+                            let curr_piece = board.piece_on(chess_move.get_source())?;
+                            Some((prev_piece, prev_move.get_dest(), curr_piece, chess_move.get_dest()))
+                        })
+                    } else {
+                        None
+                    };
                     if ply > 0 {
                         if let Some(prev_move) = self.move_stack[ply - 1] {
                             self.countermove[move_key(prev_move) as usize] = Some(chess_move);
                         }
                     }
+                    if let Some((pp, pd, cp, cd)) = cont_ctx {
+                        self.update_cont_hist(pp, pd, cp, cd, bonus);
+                    }
+                    // Collect cont_ctx for searched quiets negation below
+                    let neg_cont_ctx = cont_ctx;
                     for previous in searched_quiets.iter().copied() {
                         if previous != chess_move {
                             self.update_history(previous, -bonus);
+                            if let Some((pp, pd, _, _)) = neg_cont_ctx {
+                                if let Some(prev_piece) = board.piece_on(previous.get_source()) {
+                                    self.update_cont_hist(pp, pd, prev_piece, previous.get_dest(), -bonus);
+                                }
+                            }
                         }
                     }
                 } else if let Some(victim) = capture_victim {
@@ -1931,6 +1957,19 @@ impl RustAlphaBetaEngine {
                 {
                     score += 200_000;
                 }
+
+                // Continuation history: bonus/penalty based on (prev_piece, prev_dest, curr_piece, curr_dest)
+                if is_quiet {
+                    if let (Some(prev_piece), Some(curr_piece)) = (
+                        board.piece_on(prev_move.get_dest()),
+                        board.piece_on(chess_move.get_source()),
+                    ) {
+                        let prev_key = cont_hist_piece_key(prev_piece, prev_move.get_dest());
+                        let curr_key =
+                            cont_hist_piece_key(curr_piece, chess_move.get_dest());
+                        score += i32::from(self.cont_hist[cont_hist_index(prev_key, curr_key)]);
+                    }
+                }
             }
         }
 
@@ -1965,6 +2004,24 @@ impl RustAlphaBetaEngine {
         let clamped = bonus.clamp(-CAPTURE_HISTORY_LIMIT, CAPTURE_HISTORY_LIMIT);
         let updated = h + clamped - h * clamped.abs() / CAPTURE_HISTORY_LIMIT;
         *history = updated.clamp(-CAPTURE_HISTORY_LIMIT, CAPTURE_HISTORY_LIMIT) as i16;
+    }
+
+    /// Update 1-ply continuation history for a quiet move given the previous move context
+    fn update_cont_hist(
+        &mut self,
+        prev_piece: Piece,
+        prev_dest: Square,
+        curr_piece: Piece,
+        curr_dest: Square,
+        bonus: i32,
+    ) {
+        let prev_key = cont_hist_piece_key(prev_piece, prev_dest);
+        let curr_key = cont_hist_piece_key(curr_piece, curr_dest);
+        let idx = cont_hist_index(prev_key, curr_key);
+        let h = i32::from(self.cont_hist[idx]);
+        let clamped = bonus.clamp(-CONT_HIST_LIMIT, CONT_HIST_LIMIT);
+        let updated = h + clamped - h * clamped.abs() / CONT_HIST_LIMIT;
+        self.cont_hist[idx] = updated.clamp(-CONT_HIST_LIMIT, CONT_HIST_LIMIT) as i16;
     }
 
     fn ensure_ply_capacity(&mut self, size: usize) {
@@ -2096,6 +2153,16 @@ fn piece_index(piece: Piece) -> usize {
         Piece::Queen => 4,
         Piece::King => 5,
     }
+}
+
+/// Index into continuation history table: piece_index * 64 + dest_sq_index
+fn cont_hist_piece_key(piece: Piece, dest: Square) -> usize {
+    piece_index(piece) * 64 + dest.to_index()
+}
+
+/// Full cont_hist table index: prev_key * CONT_HIST_KEY_SIZE + curr_key
+fn cont_hist_index(prev_key: usize, curr_key: usize) -> usize {
+    prev_key * CONT_HIST_KEY_SIZE + curr_key
 }
 
 /// Fast bitboard accessor — no allocation, returns BitBoard for direct iteration

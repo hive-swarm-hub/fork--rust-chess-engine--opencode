@@ -250,6 +250,10 @@ const PAWN_CACHE_SIZE: usize = 1 << 18; // 256K entries
 const PAWN_CACHE_MASK: usize = PAWN_CACHE_SIZE - 1;
 
 const HISTORY_LIMIT: i32 = 32_000;
+const PAWN_CORR_SIZE: usize = 1 << 14; // 16K entries per color
+const PAWN_CORR_MASK: usize = PAWN_CORR_SIZE - 1;
+const PAWN_CORR_LIMIT: i32 = 8_192;
+const PAWN_CORR_GRAIN: i32 = 256; // divide stored value by this to get centipawn correction
 const CAPTURE_HISTORY_PIECES: usize = 6;
 const CAPTURE_HISTORY_LIMIT: i32 = 16_000;
 const MAX_TIME_SEARCH_DEPTH: i32 = 64;
@@ -624,6 +628,7 @@ struct RustAlphaBetaEngine {
     countermove: Vec<Option<ChessMove>>, // indexed by previous move's move_key
     move_stack: Vec<Option<ChessMove>>,  // move played at each ply for countermove tracking
     eval_stack: Vec<i32>,                // static eval at each ply for improving detection
+    pawn_corr_hist: Vec<i32>,            // pawn correction history [color][pawn_hash % size]
     eval_cache: Vec<EvalCacheEntry>,
     pawn_cache: Vec<PawnCacheEntry>,
     deadline: Option<Instant>,
@@ -644,6 +649,7 @@ impl RustAlphaBetaEngine {
             countermove: vec![None; HISTORY_SIZE],
             move_stack: vec![None; KILLER_PLY_CAPACITY],
             eval_stack: vec![0; KILLER_PLY_CAPACITY],
+            pawn_corr_hist: vec![0; 2 * PAWN_CORR_SIZE],
             eval_cache: vec![EvalCacheEntry::default(); EVAL_CACHE_SIZE],
             pawn_cache: vec![PawnCacheEntry::default(); PAWN_CACHE_SIZE],
             deadline: None,
@@ -1016,6 +1022,7 @@ impl RustAlphaBetaEngine {
             countermove: self.countermove.clone(),
             move_stack: self.move_stack.clone(),
             eval_stack: self.eval_stack.clone(),
+            pawn_corr_hist: self.pawn_corr_hist.clone(),
             eval_cache: self.eval_cache.clone(),
             pawn_cache: self.pawn_cache.clone(),
             deadline: self.deadline,
@@ -1151,7 +1158,11 @@ impl RustAlphaBetaEngine {
         }
 
         let static_eval = if !in_check_now {
-            Some(self.evaluate(board))
+            let raw = self.evaluate(board);
+            let pawn_corr_key = color_index(board.side_to_move()) * PAWN_CORR_SIZE
+                + (board.get_pawn_hash() as usize & PAWN_CORR_MASK);
+            let correction = self.pawn_corr_hist[pawn_corr_key] / PAWN_CORR_GRAIN;
+            Some((raw + correction).clamp(-MATE_SCORE + 1, MATE_SCORE - 1))
         } else {
             None
         };
@@ -1440,6 +1451,20 @@ impl RustAlphaBetaEngine {
                 self.terminal_score(board, ply, repetition)
                     .unwrap_or(DRAW_SCORE),
             );
+        }
+
+        // Update pawn correction history: adjust based on difference between static eval and search score
+        if let Some(eval) = static_eval {
+            if !in_check_now && best_score.abs() < MATE_SCORE - 1_000 {
+                let pawn_corr_key = color_index(board.side_to_move()) * PAWN_CORR_SIZE
+                    + (board.get_pawn_hash() as usize & PAWN_CORR_MASK);
+                let diff = best_score - eval;
+                let bonus = (diff * effective_depth.max(1) as i32)
+                    .clamp(-PAWN_CORR_LIMIT, PAWN_CORR_LIMIT);
+                let h = &mut self.pawn_corr_hist[pawn_corr_key];
+                *h += bonus - *h * bonus.abs() / PAWN_CORR_LIMIT;
+                *h = (*h).clamp(-PAWN_CORR_LIMIT, PAWN_CORR_LIMIT);
+            }
         }
 
         let flag = if best_score <= alpha_original {

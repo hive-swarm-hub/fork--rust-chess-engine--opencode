@@ -47,7 +47,7 @@ TC="40/120"
 SF_TC="40/120"
 
 # Use SPRT for statistical significance (Widened to 0-35 for <1 min iterations)
-SPRT_ARGS="-sprt elo0=0 elo1=35 alpha=0.05 beta=0.05"
+SPRT_ARGS="-sprt elo0=0 elo1=50 alpha=0.05 beta=0.05"
 
 # Adjudication: End games early to save time
 # - Resign if score > 6.00 for 3 moves

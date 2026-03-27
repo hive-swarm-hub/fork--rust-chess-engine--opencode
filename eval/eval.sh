@@ -202,18 +202,11 @@ fi
 # --- Run gauntlet ---
 echo "Running parallel gauntlet tournament with SPRT (concurrency: $CONCURRENCY)... 🚀" >&2
 
-# Parallel eval: 5 levels of Stockfish centered on the 2800 anchor.
+# Parallel eval: 3 levels of Stockfish: 2400, 2700, 3000.
 GAUNTLET_LOG=$(mktemp)
 rm -f "$PGN_OUT"
 
-ANCHOR_CENTER=2800
-STEP=100
-L1=$((ANCHOR_CENTER - 2*STEP))
-L2=$((ANCHOR_CENTER - STEP))
-L3=$ANCHOR_CENTER
-L4=$((ANCHOR_CENTER + STEP))
-L5=$((ANCHOR_CENTER + 2*STEP))
-ELO_LEVELS="$L1 $L2 $L3 $L4 $L5"
+ELO_LEVELS="2400 2700 3000"
 GAMES_PER_OPPONENT=200 # Sufficient games, SPRT stops when clear.
 
 CMD="$CUTECHESS"

@@ -1168,27 +1168,18 @@ impl RustAlphaBetaEngine {
             effective_depth -= 1;
         }
 
-        let raw_static_eval = if !in_check_now {
+        let static_eval = if !in_check_now {
             Some(self.evaluate(board))
         } else {
             None
         };
 
-        // Apply pawn correction history to get adjusted static eval for pruning
-        let static_eval = raw_static_eval.map(|raw| {
-            let stm = color_index(board.side_to_move());
-            let pawn_hash = board.get_pawn_hash();
-            let corr_idx = stm * PAWN_CORR_SIZE + (pawn_hash as usize & PAWN_CORR_MASK);
-            let corr = self.pawn_corr_hist[corr_idx];
-            raw + corr / 256
-        });
-
-        // Store raw static eval for improving detection (avoids feedback loops)
+        // Store static eval for improving detection
         self.ensure_ply_capacity(ply + 2);
-        self.eval_stack[ply] = raw_static_eval.unwrap_or(0);
+        self.eval_stack[ply] = static_eval.unwrap_or(0);
         let improving = !in_check_now
             && ply >= 2
-            && raw_static_eval.map_or(false, |e| e > self.eval_stack[ply - 2]);
+            && static_eval.map_or(false, |e| e > self.eval_stack[ply - 2]);
 
         if let Some(eval) = static_eval {
             if effective_depth <= 4
@@ -1508,19 +1499,6 @@ impl RustAlphaBetaEngine {
         let existing = &self.tt[tt_idx];
         if existing.key == 0 || new_entry.depth >= existing.depth || existing.key == tt_key {
             self.tt[tt_idx] = new_entry;
-        }
-
-        // Update pawn correction history based on search result vs raw eval
-        if !in_check_now {
-            if let Some(raw_eval) = raw_static_eval {
-                let divergence = (best_score - raw_eval).clamp(-64, 64);
-                let bonus = divergence * effective_depth / 4;
-                let stm = color_index(board.side_to_move());
-                let pawn_hash = board.get_pawn_hash();
-                let corr_idx = stm * PAWN_CORR_SIZE + (pawn_hash as usize & PAWN_CORR_MASK);
-                let hist = &mut self.pawn_corr_hist[corr_idx];
-                *hist += bonus - *hist * bonus.abs() / PAWN_CORR_LIMIT;
-            }
         }
 
         Some(best_score)

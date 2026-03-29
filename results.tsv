@@ -90,3 +90,4 @@ b69f6f0	2716.7	300	keep	[equal-time eval] IIR gated to cut-nodes only (zero-wind
 nmp-cut	2648.5	227	discard	[equal-time eval] NMP +1 reduction at cut-nodes — -68 ELO, too many false cutoffs
 lmr-pv	2675.3	241	discard	[equal-time eval] LMR -1 reduction at PV nodes — -41 ELO, slows search too much
 prior-red	2675.5	224	discard	[equal-time eval] prior reduction +1 LMR when parent LMR-reduced — -41 ELO, compounds depth too aggressively
+nmp-d5	2658.3	270	discard	[equal-time eval] NMP threshold depth>=5 (was 3) — -58 ELO, NMP at depth 3-4 was useful

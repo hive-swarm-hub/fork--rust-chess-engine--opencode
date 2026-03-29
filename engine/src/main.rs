@@ -250,6 +250,9 @@ const PAWN_CACHE_SIZE: usize = 1 << 18; // 256K entries
 const PAWN_CACHE_MASK: usize = PAWN_CACHE_SIZE - 1;
 
 const HISTORY_LIMIT: i32 = 32_000;
+const CONT_HIST_DIM: usize = 384; // 6 pieces * 64 squares
+const CONT_HIST_SIZE: usize = CONT_HIST_DIM * CONT_HIST_DIM; // 147456 entries
+const CONT_HIST_LIMIT: i32 = 16_000;
 const PAWN_CORR_SIZE: usize = 1 << 14; // 16K entries per color
 const PAWN_CORR_MASK: usize = PAWN_CORR_SIZE - 1;
 const PAWN_CORR_LIMIT: i32 = 8_192;
@@ -629,6 +632,7 @@ struct RustAlphaBetaEngine {
     move_stack: Vec<Option<ChessMove>>,  // move played at each ply for countermove tracking
     eval_stack: Vec<i32>,                // static eval at each ply for improving detection
     pawn_corr_hist: Vec<i32>,            // pawn correction history [color][pawn_hash % size]
+    cont_hist: Vec<i32>,                 // 1-ply continuation history [(piece*64+dest) * 384 + (prev_piece*64+prev_dest)]
     eval_cache: Vec<EvalCacheEntry>,
     pawn_cache: Vec<PawnCacheEntry>,
     deadline: Option<Instant>,
@@ -650,6 +654,7 @@ impl RustAlphaBetaEngine {
             move_stack: vec![None; KILLER_PLY_CAPACITY],
             eval_stack: vec![0; KILLER_PLY_CAPACITY],
             pawn_corr_hist: vec![0; 2 * PAWN_CORR_SIZE],
+            cont_hist: vec![0; CONT_HIST_SIZE],
             eval_cache: vec![EvalCacheEntry::default(); EVAL_CACHE_SIZE],
             pawn_cache: vec![PawnCacheEntry::default(); PAWN_CACHE_SIZE],
             deadline: None,
@@ -1023,6 +1028,7 @@ impl RustAlphaBetaEngine {
             move_stack: self.move_stack.clone(),
             eval_stack: self.eval_stack.clone(),
             pawn_corr_hist: self.pawn_corr_hist.clone(),
+            cont_hist: self.cont_hist.clone(),
             eval_cache: self.eval_cache.clone(),
             pawn_cache: self.pawn_cache.clone(),
             deadline: self.deadline,
@@ -1433,6 +1439,37 @@ impl RustAlphaBetaEngine {
                     for previous in searched_quiets.iter().copied() {
                         if previous != chess_move {
                             self.update_history(previous, -bonus);
+                        }
+                    }
+                    // Update 1-ply continuation history
+                    if ply > 0 {
+                        if let Some(prev_mv) = self.move_stack.get(ply - 1).copied().flatten() {
+                            if let Some(prev_piece) = board.piece_on(prev_mv.get_dest()) {
+                                // Positive update for cutoff move
+                                if let Some(curr_piece) = board.piece_on(chess_move.get_source()) {
+                                    let key = cont_hist_key(
+                                        curr_piece, chess_move.get_dest(),
+                                        prev_piece, prev_mv.get_dest(),
+                                    );
+                                    let h = &mut self.cont_hist[key];
+                                    *h += bonus - *h * bonus.abs() / CONT_HIST_LIMIT;
+                                    *h = (*h).clamp(-CONT_HIST_LIMIT, CONT_HIST_LIMIT);
+                                }
+                                // Negative updates for searched quiets
+                                for previous in searched_quiets.iter().copied() {
+                                    if previous != chess_move {
+                                        if let Some(p) = board.piece_on(previous.get_source()) {
+                                            let key = cont_hist_key(
+                                                p, previous.get_dest(),
+                                                prev_piece, prev_mv.get_dest(),
+                                            );
+                                            let h = &mut self.cont_hist[key];
+                                            *h += -bonus - *h * bonus.abs() / CONT_HIST_LIMIT;
+                                            *h = (*h).clamp(-CONT_HIST_LIMIT, CONT_HIST_LIMIT);
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 } else if let Some(victim) = capture_victim {
@@ -1896,6 +1933,20 @@ impl RustAlphaBetaEngine {
                 {
                     score += 200_000;
                 }
+                // 1-ply continuation history for quiet moves
+                if is_quiet {
+                    if let Some(prev_piece) = board.piece_on(prev_move.get_dest()) {
+                        if let Some(curr_piece) = board.piece_on(chess_move.get_source()) {
+                            let key = cont_hist_key(
+                                curr_piece,
+                                chess_move.get_dest(),
+                                prev_piece,
+                                prev_move.get_dest(),
+                            );
+                            score += self.cont_hist[key] / 2;
+                        }
+                    }
+                }
             }
         }
 
@@ -2061,6 +2112,12 @@ fn piece_index(piece: Piece) -> usize {
         Piece::Queen => 4,
         Piece::King => 5,
     }
+}
+
+fn cont_hist_key(curr_piece: Piece, curr_dest: Square, prev_piece: Piece, prev_dest: Square) -> usize {
+    (piece_index(curr_piece) * 64 + curr_dest.to_index()) * CONT_HIST_DIM
+        + piece_index(prev_piece) * 64
+        + prev_dest.to_index()
 }
 
 /// Fast bitboard accessor — no allocation, returns BitBoard for direct iteration

@@ -1300,7 +1300,13 @@ impl RustAlphaBetaEngine {
                         continue;
                     }
                 }
-                if move_count > late_move_pruning_limit(effective_depth) {
+                // Improving-aware LMP: when position is improving, allow 2x more late moves
+                let lmp_limit = if improving {
+                    late_move_pruning_limit(effective_depth) * 2
+                } else {
+                    late_move_pruning_limit(effective_depth)
+                };
+                if move_count > lmp_limit {
                     continue;
                 }
                 // SEE pruning for quiet moves at low depth

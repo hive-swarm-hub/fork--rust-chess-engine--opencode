@@ -82,3 +82,4 @@ a841daf	3225.5	10	keep	IIR on NNUE base — 8W/2D/0L ZERO LOSSES! NEW ALL-TIME B
 28d022b	2676.8	257	keep	[equal-time eval] aspiration window 20cp (was 30cp) — +40 ELO from tighter window with NNUE accurate eval
 671909e	2688.3	257	keep	[equal-time eval] aspiration window 15cp (was 20cp) — +52 ELO from baseline, optimal sweet spot
 1d6e46d	2689.3	257	keep	[equal-time eval] 1-ply continuation history 384x384 — +1 ELO marginal, within noise but not worse
+5931f0e	2701.6	248	keep	[equal-time eval] improving-aware LMP: 2x limit when improving — +12 ELO from 2689.3

@@ -1158,8 +1158,10 @@ impl RustAlphaBetaEngine {
             }
         }
 
-        // IIR: reduce depth by 1 when no TT move (saves expensive NNUE IID sub-searches)
-        if tt_move.is_none() && effective_depth >= 4 && !in_check_now {
+        // IIR: reduce depth by 1 when no TT move at cut nodes (zero-window)
+        // PV nodes always search full depth even without TT move for accuracy
+        let is_zero_window = alpha + 1 == beta;
+        if tt_move.is_none() && effective_depth >= 4 && !in_check_now && is_zero_window {
             effective_depth -= 1;
         }
 

@@ -98,3 +98,4 @@ pawn-corr-grain128	2689.1	299	discard	[equal-time eval] pawn correction grain 12
 probcut-150	2672.4	267	discard	[equal-time eval] ProbCut beta margin 150 (was 200) — -44 ELO, too aggressive
 killer3	2662.6	274	discard	[equal-time eval] 3rd killer slot per ply — -54 ELO, 2-slot system was optimal
 ch-lmr	2656.4	253	discard	[equal-time eval] cont_hist for LMR adjustment — -60 ELO, extra lookup overhead hurts at short TC
+de11d57	2882.2	264	keep	[40/120 baseline] new TC: 40/120 equal-time both sides — CCRL-style, 148W/24D/92L

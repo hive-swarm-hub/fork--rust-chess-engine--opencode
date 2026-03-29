@@ -96,3 +96,4 @@ asp-12	2647.8	276	discard	[equal-time eval] aspiration window 12cp (was 15cp) �
 se-pv	2683.3	192	discard	[equal-time eval] SE at PV nodes only, skip at cut-nodes — -33 ELO, SE at cut-nodes also valuable
 pawn-corr-grain128	2689.1	299	discard	[equal-time eval] pawn correction grain 128 (was 256, 2x stronger) — -28 ELO
 probcut-150	2672.4	267	discard	[equal-time eval] ProbCut beta margin 150 (was 200) — -44 ELO, too aggressive
+killer3	2662.6	274	discard	[equal-time eval] 3rd killer slot per ply — -54 ELO, 2-slot system was optimal

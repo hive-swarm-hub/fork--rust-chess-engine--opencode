@@ -78,3 +78,7 @@ b18f46e	2969.5	10	keep	nnue-rs NNUE (HalfKP 256x2-32-32-1) on contempt=0 optimiz
 a841daf	3225.5	10	keep	IIR on NNUE base — 8W/2D/0L ZERO LOSSES! NEW ALL-TIME BEST!
 0742e84	3139.9	10	discard	lazy NNUE (material eval for pruning) — 8W/1D/1L, material-only pruning too imprecise
 239ac15	3332.4	38	keep	SPRT baseline on new eval: 35W/2D/1L in 38 games = 3332.4! Statistically significant!
+62dd82c	2636.9	257	keep	[equal-time eval] adopt pawn-corr + NM guard from a7aeff55 — new equal-time baseline (old 5:1 scores not comparable)
+28d022b	2676.8	257	keep	[equal-time eval] aspiration window 20cp (was 30cp) — +40 ELO from tighter window with NNUE accurate eval
+671909e	2688.3	257	keep	[equal-time eval] aspiration window 15cp (was 20cp) — +52 ELO from baseline, optimal sweet spot
+1d6e46d	2689.3	257	keep	[equal-time eval] 1-ply continuation history 384x384 — +1 ELO marginal, within noise but not worse

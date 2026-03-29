@@ -87,3 +87,4 @@ rfp-imp	2658.4	246	discard	[equal-time eval] improving-aware RFP: 2/3 margin whe
 rfp-d5	2639.7	233	discard	[equal-time eval] extend RFP+futility to depth 5 — -62 ELO, misses tactics at depth 5
 se-1.5x	2682.4	277	discard	[equal-time eval] singular extension margin 1.5*depth (was 2*depth) — -19 ELO, too slow at short TC
 b69f6f0	2716.7	300	keep	[equal-time eval] IIR gated to cut-nodes only (zero-window) — +15 ELO, PV nodes get full depth
+nmp-cut	2648.5	227	discard	[equal-time eval] NMP +1 reduction at cut-nodes — -68 ELO, too many false cutoffs

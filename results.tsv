@@ -94,3 +94,5 @@ nmp-d5	2658.3	270	discard	[equal-time eval] NMP threshold depth>=5 (was 3) — -
 iir-d3	2682.7	252	discard	[equal-time eval] IIR threshold depth>=3 (was 4) — -34 ELO, too shallow
 asp-12	2647.8	276	discard	[equal-time eval] aspiration window 12cp (was 15cp) — -69 ELO, too many re-searches
 se-pv	2683.3	192	discard	[equal-time eval] SE at PV nodes only, skip at cut-nodes — -33 ELO, SE at cut-nodes also valuable
+pawn-corr-grain128	2689.1	299	discard	[equal-time eval] pawn correction grain 128 (was 256, 2x stronger) — -28 ELO
+probcut-150	2672.4	267	discard	[equal-time eval] ProbCut beta margin 150 (was 200) — -44 ELO, too aggressive

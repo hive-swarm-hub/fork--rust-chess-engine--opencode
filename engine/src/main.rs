@@ -1150,17 +1150,25 @@ impl RustAlphaBetaEngine {
             None
         };
 
-        // Store static eval for improving detection
+        // Store static eval for improving detection (i32::MIN = in-check sentinel)
         self.ensure_ply_capacity(ply + 2);
-        self.eval_stack[ply] = static_eval.unwrap_or(0);
-        let improving = !in_check_now
-            && ply >= 2
-            && static_eval.map_or(false, |e| e > self.eval_stack[ply - 2]);
+        self.eval_stack[ply] = static_eval.unwrap_or(i32::MIN);
+        // Improving: compare to 2 plies ago; if that was in-check, fall back to 4 plies ago
+        let improving = !in_check_now && {
+            if ply >= 2 && self.eval_stack[ply - 2] != i32::MIN {
+                static_eval.map_or(false, |e| e > self.eval_stack[ply - 2])
+            } else if ply >= 4 && self.eval_stack[ply - 4] != i32::MIN {
+                static_eval.map_or(false, |e| e > self.eval_stack[ply - 4])
+            } else {
+                false
+            }
+        };
 
         if let Some(eval) = static_eval {
             let rfp_margin = 75 * effective_depth - (50 * improving as i32);
             if effective_depth <= 6 && eval >= beta + rfp_margin && beta < MATE_SCORE - 1_000 {
-                return Some(eval);
+                // Soft return (Stockfish/Reckless style): blend eval toward beta
+                return Some(beta + (eval - beta) / 3);
             }
             if effective_depth <= 3
                 && eval + RAZOR_MARGIN[effective_depth as usize] <= alpha
@@ -1315,16 +1323,9 @@ impl RustAlphaBetaEngine {
                 if let Some(se_score) = excluded_score {
                     if se_score < se_beta {
                         extension = 1; // TT move is singular
-                                       // Double extension for extremely singular moves or singular checks
-                        if se_score < se_beta - 100 || in_check(&child) {
-                            extension = 2;
+                        if in_check(&child) {
+                            extension = 2; // Double extension for singular checks
                         }
-                    } else if se_score >= beta {
-                        // Multi-Cut: another move besides the TT move also beats beta
-                        return Some(se_score);
-                    } else if tt_entry.unwrap().score >= beta || cut_node {
-                        // Negative extensions (reduction): move is not singular, so reduce its priority
-                        extension = -2;
                     }
                 }
             }
@@ -1604,7 +1605,13 @@ impl RustAlphaBetaEngine {
         // Use NNUE evaluation
         let mut acc = self.nnue_stack[ply];
         reckless_nnue::refresh_threats(board, &mut acc);
-        let score = reckless_nnue::evaluate(board, &acc);
+        let raw = reckless_nnue::evaluate(board, &acc);
+
+        // Material-based eval scaling (Reckless evaluation.rs formula):
+        // Scale NNUE output up in material-rich positions, down in endgames.
+        // Piece values: P=109, N=403, B=435, R=679, Q=1242
+        let material = board_material(board);
+        let score = raw * (21061 + material) / 26556;
 
         self.eval_cache[eval_idx] = EvalCacheEntry {
             key: board_key,
@@ -1794,6 +1801,23 @@ impl RustAlphaBetaEngine {
 
 fn board_hash(board: &Board) -> u64 {
     board.get_hash()
+}
+
+/// Total piece material on the board (both sides, excluding kings).
+/// Uses Reckless piece values: P=109, N=403, B=435, R=679, Q=1242.
+fn board_material(board: &Board) -> i32 {
+    const VALS: [(Piece, i32); 5] = [
+        (Piece::Pawn, 109),
+        (Piece::Knight, 403),
+        (Piece::Bishop, 435),
+        (Piece::Rook, 679),
+        (Piece::Queen, 1242),
+    ];
+    let mut total = 0;
+    for (piece, val) in VALS {
+        total += board.pieces(piece).popcnt() as i32 * val;
+    }
+    total
 }
 
 fn available_root_threads() -> usize {

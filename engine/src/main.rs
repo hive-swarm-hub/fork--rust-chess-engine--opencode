@@ -9,7 +9,10 @@ fn send(msg: &str) {
     io::stdout().flush().ok();
 }
 
+mod reckless_nnue;
+
 fn main() {
+    reckless_nnue::load_parameters();
     let stdin = io::stdin();
     let mut engine = RustAlphaBetaEngine::new(64);
     let mut root_fen = String::from("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
@@ -185,52 +188,15 @@ use std::sync::OnceLock;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use binread::BinRead;
 use chess::{
     get_bishop_moves, get_king_moves, get_knight_moves, get_pawn_attacks, get_rook_moves, BitBoard,
     Board, BoardStatus, ChessMove, Color, File, MoveGen, Piece, Rank, Square,
 };
-use nnue::stockfish::halfkp::{SfHalfKpFullModel, scale_nn_to_centipawns};
-
-// NNUE weights (Stockfish HalfKP 256x2-32-32-1)
-const NNUE_WEIGHTS: &[u8] = include_bytes!("nn.nnue");
-static NNUE_MODEL: OnceLock<SfHalfKpFullModel> = OnceLock::new();
-
-fn load_nnue() -> SfHalfKpFullModel {
-    let mut cursor = std::io::Cursor::new(NNUE_WEIGHTS);
-    SfHalfKpFullModel::read(&mut cursor).expect("NNUE load failed")
-}
 
 fn nnue_evaluate(board: &Board) -> i32 {
-    let full = NNUE_MODEL.get_or_init(load_nnue);
-    let model = &full.model;
-    let wk_sq = board.king_square(Color::White);
-    let bk_sq = board.king_square(Color::Black);
-    let wk = nnue::Square::from_index(wk_sq.to_index());
-    let bk = nnue::Square::from_index(bk_sq.to_index());
-    let mut state = model.new_state(wk, bk);
-    for &chess_color in &[Color::White, Color::Black] {
-        let nc = if chess_color == Color::White { nnue::Color::White } else { nnue::Color::Black };
-        for &chess_piece in &[Piece::Pawn, Piece::Knight, Piece::Bishop, Piece::Rook, Piece::Queen] {
-            let np = match chess_piece {
-                Piece::Pawn => nnue::Piece::Pawn,
-                Piece::Knight => nnue::Piece::Knight,
-                Piece::Bishop => nnue::Piece::Bishop,
-                Piece::Rook => nnue::Piece::Rook,
-                Piece::Queen => nnue::Piece::Queen,
-                _ => unreachable!(),
-            };
-            let bb = board.pieces(chess_piece) & board.color_combined(chess_color);
-            for sq in bb {
-                let ns = nnue::Square::from_index(sq.to_index());
-                for &acc_color in &nnue::Color::ALL {
-                    state.add(acc_color, np, nc, ns);
-                }
-            }
-        }
-    }
-    let stm = if board.side_to_move() == Color::White { nnue::Color::White } else { nnue::Color::Black };
-    scale_nn_to_centipawns(state.activate(stm)[0])
+    let mut acc = reckless_nnue::full_refresh_psq(board);
+    reckless_nnue::refresh_threats(board, &mut acc);
+    reckless_nnue::evaluate(board, &acc)
 }
 
 const INFINITY: i32 = 1_000_000;
@@ -299,6 +265,19 @@ const RAZOR_MARGIN: [i32; 4] = [0, 230, 360, 500];
 
 // Contempt: 0 = accept draws (better vs strong opponents at anchor 2800)
 const CONTEMPT: i32 = 0;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chess::Board;
+
+    #[test]
+    fn test_botbot_startpos() {
+        let board = Board::default();
+        let score = nnue_evaluate(&board);
+        println!("Botbot startpos score: {}", score);
+    }
+}
 
 /// Build the opening book: maps position hash -> best move UCI string.
 /// These are strong opening moves from theory, covering common openings.
@@ -624,6 +603,7 @@ struct RustAlphaBetaEngine {
     countermove: Vec<Option<ChessMove>>, // indexed by previous move's move_key
     move_stack: Vec<Option<ChessMove>>,  // move played at each ply for countermove tracking
     eval_stack: Vec<i32>,                // static eval at each ply for improving detection
+    nnue_stack: Vec<reckless_nnue::Accumulator>,
     eval_cache: Vec<EvalCacheEntry>,
     pawn_cache: Vec<PawnCacheEntry>,
     deadline: Option<Instant>,
@@ -644,6 +624,7 @@ impl RustAlphaBetaEngine {
             countermove: vec![None; HISTORY_SIZE],
             move_stack: vec![None; KILLER_PLY_CAPACITY],
             eval_stack: vec![0; KILLER_PLY_CAPACITY],
+            nnue_stack: vec![reckless_nnue::Accumulator::new(); KILLER_PLY_CAPACITY],
             eval_cache: vec![EvalCacheEntry::default(); EVAL_CACHE_SIZE],
             pawn_cache: vec![PawnCacheEntry::default(); PAWN_CACHE_SIZE],
             deadline: None,
@@ -709,6 +690,10 @@ impl RustAlphaBetaEngine {
         self.stopped = false;
         let search_start = Instant::now();
         self.deadline = time_budget.map(|budget| search_start + budget);
+
+        // Initialize NNUE root state
+        self.ensure_ply_capacity(16);
+        self.nnue_stack[0] = reckless_nnue::full_refresh_psq(&board);
 
         let mut best_move: Option<ChessMove> = None;
         let mut best_score = 0;
@@ -849,6 +834,7 @@ impl RustAlphaBetaEngine {
         root_moves.sort_unstable_by(|left, right| right.score.cmp(&left.score));
 
         if !self.should_parallelize_root(depth, root_moves.len()) {
+            self.nnue_stack[0] = reckless_nnue::full_refresh_psq(board);
             let score = self.negamax(board, depth, alpha, beta, 0, repetition)?;
             let tt_idx2 = board_hash(board) as usize & TT_MASK;
             let best_move = {
@@ -879,6 +865,7 @@ impl RustAlphaBetaEngine {
         let first_child = board.make_move_new(first_move);
         let first_hash = board_hash(&first_child);
         repetition.push(first_hash);
+        self.nnue_stack[1] = reckless_nnue::update(board, first_move, &self.nnue_stack[0]);
         let mut best_score =
             -self.negamax(&first_child, depth - 1, -beta, -alpha, 1, repetition)?;
         repetition.pop(first_hash);
@@ -962,6 +949,7 @@ impl RustAlphaBetaEngine {
             let child_hash = board_hash(&child);
             let mut local_repetition = repetition.clone();
             local_repetition.push(child_hash);
+            self.nnue_stack[1] = reckless_nnue::update(&board, chess_move, &self.nnue_stack[0]);
 
             let mut score = -self.negamax(
                 &child,
@@ -1016,6 +1004,7 @@ impl RustAlphaBetaEngine {
             countermove: self.countermove.clone(),
             move_stack: self.move_stack.clone(),
             eval_stack: self.eval_stack.clone(),
+            nnue_stack: self.nnue_stack.clone(),
             eval_cache: self.eval_cache.clone(),
             pawn_cache: self.pawn_cache.clone(),
             deadline: self.deadline,
@@ -1085,7 +1074,7 @@ impl RustAlphaBetaEngine {
 
         // Max ply limit to prevent search explosions
         if ply >= 96 {
-            return Some(self.evaluate(board));
+            return Some(self.evaluate(board, ply));
         }
 
         // Mate distance pruning
@@ -1151,7 +1140,7 @@ impl RustAlphaBetaEngine {
         }
 
         let static_eval = if !in_check_now {
-            Some(self.evaluate(board))
+            Some(self.evaluate(board, ply))
         } else {
             None
         };
@@ -1187,6 +1176,7 @@ impl RustAlphaBetaEngine {
                 let reduction = 2 + effective_depth / 3;
                 let null_hash = board_hash(&null_board);
                 repetition.push(null_hash);
+                self.nnue_stack[ply + 1] = self.nnue_stack[ply];
                 let search = self.negamax(
                     &null_board,
                     effective_depth - 1 - reduction,
@@ -1204,10 +1194,7 @@ impl RustAlphaBetaEngine {
         }
 
         // ProbCut: shallow search with raised beta on captures to detect likely cutoffs
-        if effective_depth >= 5
-            && !in_check_now
-            && beta.abs() < MATE_SCORE - 512
-        {
+        if effective_depth >= 5 && !in_check_now && beta.abs() < MATE_SCORE - 512 {
             let probcut_beta = beta + 200;
             let probcut_depth = effective_depth - 4;
             let mut probcut_moves = self.scored_moves(board, tt_move, ply, true);
@@ -1221,6 +1208,8 @@ impl RustAlphaBetaEngine {
                 let child = board.make_move_new(pc_move);
                 let child_hash = board_hash(&child);
                 repetition.push(child_hash);
+                self.nnue_stack[ply + 1] =
+                    reckless_nnue::update(board, pc_move, &self.nnue_stack[ply]);
                 let search = self.negamax(
                     &child,
                     probcut_depth,
@@ -1323,6 +1312,8 @@ impl RustAlphaBetaEngine {
             // Track move at this ply for countermove recording
             self.ensure_ply_capacity(ply + 2);
             self.move_stack[ply] = Some(chess_move);
+            self.nnue_stack[ply + 1] =
+                reckless_nnue::update(board, chess_move, &self.nnue_stack[ply]);
 
             repetition.push(child_hash);
 
@@ -1481,7 +1472,7 @@ impl RustAlphaBetaEngine {
         }
 
         let in_check_now = in_check(board);
-        let stand_pat = self.evaluate(board);
+        let stand_pat = self.evaluate(board, ply);
         if !in_check_now {
             if stand_pat >= beta {
                 return Some(stand_pat);
@@ -1504,6 +1495,10 @@ impl RustAlphaBetaEngine {
                     continue;
                 }
             }
+
+            self.ensure_ply_capacity(ply + 2);
+            self.nnue_stack[ply + 1] =
+                reckless_nnue::update(board, chess_move, &self.nnue_stack[ply]);
 
             let child = board.make_move_new(chess_move);
             let child_hash = board_hash(&child);
@@ -1532,7 +1527,7 @@ impl RustAlphaBetaEngine {
         excluded_move: ChessMove,
     ) -> Option<i32> {
         if self.should_stop() || depth <= 0 {
-            return Some(self.evaluate(board));
+            return Some(self.evaluate(board, ply));
         }
 
         let mut best_score = -INFINITY;
@@ -1543,6 +1538,10 @@ impl RustAlphaBetaEngine {
             if chess_move == excluded_move {
                 continue;
             }
+
+            self.ensure_ply_capacity(ply + 2);
+            self.nnue_stack[ply + 1] =
+                reckless_nnue::update(board, chess_move, &self.nnue_stack[ply]);
 
             let child = board.make_move_new(chess_move);
             let child_hash = board_hash(&child);
@@ -1577,7 +1576,7 @@ impl RustAlphaBetaEngine {
         false
     }
 
-    fn evaluate(&mut self, board: &Board) -> i32 {
+    fn evaluate(&mut self, board: &Board, ply: usize) -> i32 {
         let board_key = board_hash(board);
         let eval_idx = board_key as usize & EVAL_CACHE_MASK;
         let cached = &self.eval_cache[eval_idx];
@@ -1585,194 +1584,10 @@ impl RustAlphaBetaEngine {
             return cached.score;
         }
 
-        // Use NNUE evaluation (much stronger than HCE)
-        let score = nnue_evaluate(board);
-        self.eval_cache[eval_idx] = EvalCacheEntry { key: board_key, score };
-        return score;
-
-        // HCE fallback (unreachable when NNUE is loaded)
-        #[allow(unreachable_code)]
-        let phase = game_phase(board);
-        let endgame = phase <= 6;
-        let mut white_mg = 0;
-        let mut black_mg = 0;
-        let mut white_eg = 0;
-        let mut black_eg = 0;
-
-        for square in piece_bb(board, Color::White, Piece::Pawn) {
-            let idx = square_index(square);
-            white_mg += PAWN + PAWN_TABLE[idx];
-            white_eg += PAWN + PAWN_EG_TABLE[idx];
-        }
-        for square in piece_bb(board, Color::Black, Piece::Pawn) {
-            let idx = mirror_index(square_index(square));
-            black_mg += PAWN + PAWN_TABLE[idx];
-            black_eg += PAWN + PAWN_EG_TABLE[idx];
-        }
-
-        for square in piece_bb(board, Color::White, Piece::Knight) {
-            let idx = square_index(square);
-            white_mg += KNIGHT + KNIGHT_TABLE[idx];
-            white_eg += KNIGHT + KNIGHT_EG_TABLE[idx];
-        }
-        for square in piece_bb(board, Color::Black, Piece::Knight) {
-            let idx = mirror_index(square_index(square));
-            black_mg += KNIGHT + KNIGHT_TABLE[idx];
-            black_eg += KNIGHT + KNIGHT_EG_TABLE[idx];
-        }
-
-        for square in piece_bb(board, Color::White, Piece::Bishop) {
-            let idx = square_index(square);
-            white_mg += BISHOP + BISHOP_TABLE[idx];
-            white_eg += BISHOP + BISHOP_EG_TABLE[idx];
-        }
-        for square in piece_bb(board, Color::Black, Piece::Bishop) {
-            let idx = mirror_index(square_index(square));
-            black_mg += BISHOP + BISHOP_TABLE[idx];
-            black_eg += BISHOP + BISHOP_EG_TABLE[idx];
-        }
-
-        for square in piece_bb(board, Color::White, Piece::Rook) {
-            let idx = square_index(square);
-            white_mg += ROOK + ROOK_TABLE[idx];
-            white_eg += ROOK + ROOK_EG_TABLE[idx];
-        }
-        for square in piece_bb(board, Color::Black, Piece::Rook) {
-            let idx = mirror_index(square_index(square));
-            black_mg += ROOK + ROOK_TABLE[idx];
-            black_eg += ROOK + ROOK_EG_TABLE[idx];
-        }
-
-        for square in piece_bb(board, Color::White, Piece::Queen) {
-            let idx = square_index(square);
-            white_mg += QUEEN + QUEEN_TABLE[idx];
-            white_eg += QUEEN + QUEEN_EG_TABLE[idx];
-        }
-        for square in piece_bb(board, Color::Black, Piece::Queen) {
-            let idx = mirror_index(square_index(square));
-            black_mg += QUEEN + QUEEN_TABLE[idx];
-            black_eg += QUEEN + QUEEN_EG_TABLE[idx];
-        }
-
-        white_mg += king_position_score(board, Color::White, false);
-        black_mg += king_position_score(board, Color::Black, false);
-        white_eg += king_position_score(board, Color::White, true);
-        black_eg += king_position_score(board, Color::Black, true);
-
-        let pawn_entry = self.pawn_entry(board);
-        white_mg += pawn_entry.white_structure_mg + pawn_entry.white_center_mg;
-        black_mg += pawn_entry.black_structure_mg + pawn_entry.black_center_mg;
-        white_eg += pawn_entry.white_structure_eg;
-        black_eg += pawn_entry.black_structure_eg;
-
-        let white_mobility = mobility_score(board, Color::White);
-        let black_mobility = mobility_score(board, Color::Black);
-        white_mg += white_mobility;
-        black_mg += black_mobility;
-        white_eg += white_mobility / 2;
-        black_eg += black_mobility / 2;
-
-        let white_rook_activity = rook_activity_score(
-            board,
-            Color::White,
-            &pawn_entry.white_files,
-            &pawn_entry.black_files,
-        );
-        let black_rook_activity = rook_activity_score(
-            board,
-            Color::Black,
-            &pawn_entry.black_files,
-            &pawn_entry.white_files,
-        );
-        white_mg += white_rook_activity;
-        black_mg += black_rook_activity;
-        white_eg += white_rook_activity;
-        black_eg += black_rook_activity;
-
-        let white_outposts = knight_outpost_score(board, Color::White);
-        let black_outposts = knight_outpost_score(board, Color::Black);
-        white_mg += white_outposts;
-        black_mg += black_outposts;
-        white_eg += white_outposts / 3;
-        black_eg += black_outposts / 3;
-
-        white_mg += development_score(board, Color::White, endgame);
-        black_mg += development_score(board, Color::Black, endgame);
-
-        if piece_bb(board, Color::White, Piece::Bishop).popcnt() >= 2 {
-            white_mg += BISHOP_PAIR_BONUS;
-            white_eg += BISHOP_PAIR_BONUS + 6;
-        }
-        if piece_bb(board, Color::Black, Piece::Bishop).popcnt() >= 2 {
-            black_mg += BISHOP_PAIR_BONUS;
-            black_eg += BISHOP_PAIR_BONUS + 6;
-        }
-
-        white_mg += king_safety_score(
-            board,
-            Color::White,
-            phase,
-            &pawn_entry.white_files,
-            &pawn_entry.black_files,
-        );
-        black_mg += king_safety_score(
-            board,
-            Color::Black,
-            phase,
-            &pawn_entry.black_files,
-            &pawn_entry.white_files,
-        );
-
-        // Threat evaluation
-        let white_threats = threat_score(board, Color::White);
-        let black_threats = threat_score(board, Color::Black);
-        white_mg += white_threats;
-        black_mg += black_threats;
-        white_eg += white_threats / 2;
-        black_eg += black_threats / 2;
-
-        // Connected rooks bonus
-        let white_connected = connected_rooks_score(board, Color::White);
-        let black_connected = connected_rooks_score(board, Color::Black);
-        white_mg += white_connected;
-        black_mg += black_connected;
-
-        // Passed pawn king distance (endgame only)
-        white_eg += passed_pawn_king_bonus(board, Color::White);
-        black_eg += passed_pawn_king_bonus(board, Color::Black);
-
-        // Mop-up eval: drive enemy king to corner in won endgames
-        let white_mopup = mopup_score(board, Color::White);
-        let black_mopup = mopup_score(board, Color::Black);
-        white_eg += white_mopup;
-        black_eg += black_mopup;
-
-        let white_score = tapered_score(white_mg, white_eg, phase);
-        let black_score = tapered_score(black_mg, black_eg, phase);
-
-        let mut score = if board.side_to_move() == Color::White {
-            white_score - black_score + TEMPO_BONUS
-        } else {
-            black_score - white_score + TEMPO_BONUS
-        };
-
-        // Contempt: penalize draws slightly when we have material advantage
-        // This makes the engine play for wins against weaker opponents
-        if score.abs() < 50 {
-            let our_material = if board.side_to_move() == Color::White {
-                white_mg
-            } else {
-                black_mg
-            };
-            let their_material = if board.side_to_move() == Color::White {
-                black_mg
-            } else {
-                white_mg
-            };
-            if our_material > their_material + 100 {
-                score += CONTEMPT;
-            }
-        }
+        // Use NNUE evaluation
+        let mut acc = self.nnue_stack[ply];
+        reckless_nnue::refresh_threats(board, &mut acc);
+        let score = reckless_nnue::evaluate(board, &acc);
 
         self.eval_cache[eval_idx] = EvalCacheEntry {
             key: board_key,

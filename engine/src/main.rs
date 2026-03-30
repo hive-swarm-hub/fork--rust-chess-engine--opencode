@@ -1137,7 +1137,10 @@ impl RustAlphaBetaEngine {
         }
 
         // IIR: reduce depth by 1 when no TT move (saves expensive NNUE IID sub-searches)
-        if tt_move.is_none() && effective_depth >= 4 && !in_check_now {
+        let cut_node = beta == alpha + 1;
+
+        // IIR: reduce depth by 1 when no TT move
+        if tt_move.is_none() && effective_depth >= 4 && !in_check_now && cut_node {
             effective_depth -= 1;
         }
 
@@ -1155,10 +1158,8 @@ impl RustAlphaBetaEngine {
             && static_eval.map_or(false, |e| e > self.eval_stack[ply - 2]);
 
         if let Some(eval) = static_eval {
-            if effective_depth <= 4
-                && eval >= beta + REVERSE_FUTILITY_MARGIN[effective_depth as usize]
-                && beta < MATE_SCORE - 1_000
-            {
+            let rfp_margin = 75 * effective_depth - (50 * improving as i32);
+            if effective_depth <= 6 && eval >= beta + rfp_margin && beta < MATE_SCORE - 1_000 {
                 return Some(eval);
             }
             if effective_depth <= 3
@@ -1272,9 +1273,9 @@ impl RustAlphaBetaEngine {
             if is_quiet && !in_check_now && !gives_check_move {
                 if let Some(eval) = static_eval {
                     let history = self.history_heuristic[move_key(chess_move) as usize];
-                    if effective_depth <= 7
+                    if effective_depth <= 8
                         && move_count > 1
-                        && eval + 100 * effective_depth + history / 64 <= alpha
+                        && eval + 90 * effective_depth + history / 128 <= alpha
                     {
                         continue;
                     }
@@ -1363,7 +1364,7 @@ impl RustAlphaBetaEngine {
                     // History adjustment
                     let hist = self.history_heuristic[mk];
                     reduction -= hist / 10000;
-                    
+
                     search_depth = (search_depth - reduction).max(0);
                 }
 

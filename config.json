@@ -22,7 +22,7 @@
         "enabled": false
     },
     "opening": {
-        "file": "eval/openings.epd",
+        "file": "data/openings.epd",
         "format": 0,
         "order": 0,
         "plies": -1,
@@ -60,7 +60,7 @@
     },
     "config_name": "config.json",
     "output": 0,
-    "seed": 16092015255660228927,
+    "seed": 8394481256709592129,
     "variant": 0,
     "type": 1,
     "gauntlet_seeds": 1,
@@ -70,7 +70,7 @@
     "autosaveinterval": 20,
     "games": 2,
     "rounds": 100,
-    "concurrency": 5,
+    "concurrency": 115,
     "force_concurrency": false,
     "recover": true,
     "noswap": false,
@@ -317,13 +317,24 @@
             "penta_LD": 0,
             "penta_LL": 0
         },
-        "SF_2700 vs SF_2900": {
-            "wins": 0,
+        "HiveChess vs SF_2700": {
+            "wins": 40,
             "losses": 0,
             "draws": 0,
-            "penta_WW": 0,
+            "penta_WW": 20,
             "penta_WD": 0,
             "penta_WL": 0,
+            "penta_DD": 0,
+            "penta_LD": 0,
+            "penta_LL": 0
+        },
+        "HiveChess vs SF_2800": {
+            "wins": 33,
+            "losses": 7,
+            "draws": 4,
+            "penta_WW": 11,
+            "penta_WD": 4,
+            "penta_WL": 7,
             "penta_DD": 0,
             "penta_LD": 0,
             "penta_LL": 0
@@ -339,38 +350,49 @@
             "penta_LD": 0,
             "penta_LL": 0
         },
-        "SF_2600 vs SF_2700": {
-            "wins": 0,
-            "losses": 0,
-            "draws": 0,
-            "penta_WW": 0,
-            "penta_WD": 0,
-            "penta_WL": 0,
-            "penta_DD": 0,
-            "penta_LD": 0,
-            "penta_LL": 0
-        },
-        "SF_2700 vs SF_2800": {
-            "wins": 0,
-            "losses": 0,
-            "draws": 0,
-            "penta_WW": 0,
-            "penta_WD": 0,
-            "penta_WL": 0,
-            "penta_DD": 0,
-            "penta_LD": 0,
-            "penta_LL": 0
-        },
         "HiveChess vs SF_3000": {
-            "wins": 2,
+            "wins": 11,
+            "losses": 17,
+            "draws": 4,
+            "penta_WW": 2,
+            "penta_WD": 1,
+            "penta_WL": 6,
+            "penta_DD": 0,
+            "penta_LD": 3,
+            "penta_LL": 4
+        },
+        "HiveChess vs SF_2600": {
+            "wins": 46,
+            "losses": 2,
+            "draws": 0,
+            "penta_WW": 22,
+            "penta_WD": 0,
+            "penta_WL": 2,
+            "penta_DD": 0,
+            "penta_LD": 0,
+            "penta_LL": 0
+        },
+        "SF_2600 vs SF_2800": {
+            "wins": 0,
             "losses": 0,
             "draws": 0,
-            "penta_WW": 1,
+            "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
             "penta_DD": 0,
             "penta_LD": 0,
             "penta_LL": 0
+        },
+        "HiveChess vs SF_2900": {
+            "wins": 20,
+            "losses": 11,
+            "draws": 5,
+            "penta_WW": 4,
+            "penta_WD": 4,
+            "penta_WL": 8,
+            "penta_DD": 0,
+            "penta_LD": 1,
+            "penta_LL": 1
         },
         "SF_2700 vs SF_3000": {
             "wins": 0,
@@ -383,51 +405,7 @@
             "penta_LD": 0,
             "penta_LL": 0
         },
-        "HiveChess vs SF_2900": {
-            "wins": 3,
-            "losses": 0,
-            "draws": 1,
-            "penta_WW": 1,
-            "penta_WD": 1,
-            "penta_WL": 0,
-            "penta_DD": 0,
-            "penta_LD": 0,
-            "penta_LL": 0
-        },
-        "HiveChess vs SF_2700": {
-            "wins": 4,
-            "losses": 0,
-            "draws": 0,
-            "penta_WW": 2,
-            "penta_WD": 0,
-            "penta_WL": 0,
-            "penta_DD": 0,
-            "penta_LD": 0,
-            "penta_LL": 0
-        },
-        "HiveChess vs SF_2800": {
-            "wins": 4,
-            "losses": 0,
-            "draws": 0,
-            "penta_WW": 2,
-            "penta_WD": 0,
-            "penta_WL": 0,
-            "penta_DD": 0,
-            "penta_LD": 0,
-            "penta_LL": 0
-        },
         "SF_2600 vs SF_2900": {
-            "wins": 0,
-            "losses": 0,
-            "draws": 0,
-            "penta_WW": 0,
-            "penta_WD": 0,
-            "penta_WL": 0,
-            "penta_DD": 0,
-            "penta_LD": 0,
-            "penta_LL": 0
-        },
-        "SF_2600 vs SF_2800": {
             "wins": 0,
             "losses": 0,
             "draws": 0,
@@ -449,11 +427,33 @@
             "penta_LD": 0,
             "penta_LL": 0
         },
-        "HiveChess vs SF_2600": {
-            "wins": 6,
+        "SF_2700 vs SF_2800": {
+            "wins": 0,
             "losses": 0,
             "draws": 0,
-            "penta_WW": 3,
+            "penta_WW": 0,
+            "penta_WD": 0,
+            "penta_WL": 0,
+            "penta_DD": 0,
+            "penta_LD": 0,
+            "penta_LL": 0
+        },
+        "SF_2600 vs SF_2700": {
+            "wins": 0,
+            "losses": 0,
+            "draws": 0,
+            "penta_WW": 0,
+            "penta_WD": 0,
+            "penta_WL": 0,
+            "penta_DD": 0,
+            "penta_LD": 0,
+            "penta_LL": 0
+        },
+        "SF_2700 vs SF_2900": {
+            "wins": 0,
+            "losses": 0,
+            "draws": 0,
+            "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
             "penta_DD": 0,

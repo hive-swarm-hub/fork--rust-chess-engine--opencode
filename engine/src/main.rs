@@ -1145,7 +1145,21 @@ impl RustAlphaBetaEngine {
         }
 
         let static_eval = if !in_check_now {
-            Some(self.evaluate(board, ply))
+            let raw_eval = self.evaluate(board, ply);
+            // TT value as eval override: if TT bound is consistent with TT value being
+            // a better estimate than static eval, use TT value for pruning decisions
+            let refined_eval = if let Some(entry) = tt_entry {
+                if (entry.flag == LOWER_BOUND && entry.score > raw_eval)
+                    || (entry.flag == UPPER_BOUND && entry.score < raw_eval)
+                {
+                    entry.score
+                } else {
+                    raw_eval
+                }
+            } else {
+                raw_eval
+            };
+            Some(refined_eval)
         } else {
             None
         };
@@ -1174,7 +1188,6 @@ impl RustAlphaBetaEngine {
             && !in_check_now
             && has_non_pawn_material(board, board.side_to_move())
             && beta < MATE_SCORE - 1_000
-            && static_eval.map_or(false, |e| e >= beta)
         {
             if let Some(null_board) = board.null_move() {
                 let mut reduction = 3 + effective_depth / 4;
@@ -1615,13 +1628,13 @@ impl RustAlphaBetaEngine {
     ) -> Option<i32> {
         match board.status() {
             BoardStatus::Checkmate => Some(-MATE_SCORE + ply as i32),
-            BoardStatus::Stalemate => Some(-CONTEMPT), // Slight contempt: avoid stalemate
+            BoardStatus::Stalemate => Some((self.nodes & 2) as i32 - 1), // Draw noise: prevent systematic draw avoidance
             BoardStatus::Ongoing => {
                 let rep_count = repetition.count(board_hash(board));
                 if rep_count >= 3 {
-                    Some(-CONTEMPT) // Slight contempt: avoid repetition draws
+                    Some((self.nodes & 2) as i32 - 1) // Draw noise: prevent systematic draw avoidance
                 } else if rep_count >= 2 && ply > 0 {
-                    Some(-CONTEMPT)
+                    Some((self.nodes & 2) as i32 - 1)
                 } else {
                     None
                 }

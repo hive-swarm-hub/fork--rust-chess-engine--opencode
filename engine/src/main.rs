@@ -827,26 +827,49 @@ impl RustAlphaBetaEngine {
         let mut alpha = -INFINITY;
         let mut beta = INFINITY;
         let mut delta = ASPIRATION_WINDOW;
+        let mut reduction = 0;
+        let mut average_score = previous_score.unwrap_or(0);
+
+        // Adjust delta based on average score (Reckless-style)
+        delta += average_score * average_score / 23660;
+
         if let Some(score) = previous_score.filter(|_| depth >= 3) {
             alpha = (score - delta).max(-INFINITY);
             beta = (score + delta).min(INFINITY);
         }
 
         loop {
+            let search_depth = (depth - reduction).max(1);
             let Some((score, best_move)) =
-                self.search_root_window(board, depth, alpha, beta, repetition)
+                self.search_root_window(board, search_depth, alpha, beta, repetition)
             else {
                 break;
             };
 
+            // Update average score for next iteration
+            if average_score == 0 {
+                average_score = score;
+            } else {
+                average_score = (average_score + score) / 2;
+            }
+
             if alpha != -INFINITY && score <= alpha {
-                delta = delta * 3 / 2;
+                // Fail low: slower delta growth
+                delta += 27 * delta / 128;
+                beta = (3 * alpha + beta) / 4;
                 alpha = (score - delta).max(-INFINITY);
+                reduction = 0;
                 continue;
             }
             if beta != INFINITY && score >= beta {
-                delta = delta * 3 / 2;
+                // Fail high: faster delta growth, increase reduction
+                delta += 63 * delta / 128;
+                alpha = (beta - delta).max(alpha);
                 beta = (score + delta).min(INFINITY);
+                reduction += 1;
+                continue;
+            }
+            return Some((score, best_move));
                 continue;
             }
             return Some((score, best_move));
@@ -1113,7 +1136,7 @@ impl RustAlphaBetaEngine {
         }
         self.nodes += 1;
 
-        if let Some(terminal_score) = self.terminal_score(board, ply, repetition) {
+        if let Some(terminal_score) = self.terminal_score(board, ply, repetition, self.nodes) {
             return Some(terminal_score);
         }
 
@@ -1204,6 +1227,22 @@ impl RustAlphaBetaEngine {
         let improving = !in_check_now
             && ply >= 2
             && raw_static_eval.map_or(false, |e| e > self.eval_stack[ply - 2]);
+
+        // Hindsight adjustment of reductions based on static evaluation difference.
+        // If prior reduction was significant and opponent is not worsening, search deeper.
+        // If prior reduction was moderate and static eval is favorable, reduce depth.
+        let opponent_worsening = !in_check_now
+            && ply >= 1
+            && raw_static_eval.map_or(false, |e| e > -self.eval_stack[ply - 1]);
+        if prior_reduction >= 3 && !opponent_worsening {
+            effective_depth += 1;
+        }
+        if prior_reduction >= 2
+            && effective_depth >= 2
+            && raw_static_eval.map_or(false, |e| e + self.eval_stack[ply - 1] > 195)
+        {
+            effective_depth -= 1;
+        }
 
         if let Some(eval) = static_eval {
             if effective_depth <= 4
@@ -1495,7 +1534,7 @@ impl RustAlphaBetaEngine {
 
         if best_move.is_none() {
             return Some(
-                self.terminal_score(board, ply, repetition)
+                self.terminal_score(board, ply, repetition, self.nodes)
                     .unwrap_or(DRAW_SCORE),
             );
         }
@@ -1534,7 +1573,7 @@ impl RustAlphaBetaEngine {
         }
         self.nodes += 1;
 
-        if let Some(terminal_score) = self.terminal_score(board, ply, repetition) {
+        if let Some(terminal_score) = self.terminal_score(board, ply, repetition, self.nodes) {
             return Some(terminal_score);
         }
 
@@ -1847,16 +1886,18 @@ impl RustAlphaBetaEngine {
         board: &Board,
         ply: usize,
         repetition: &RepetitionTracker,
+        nodes: u64,
     ) -> Option<i32> {
         match board.status() {
             BoardStatus::Checkmate => Some(-MATE_SCORE + ply as i32),
-            BoardStatus::Stalemate => Some(-CONTEMPT), // Slight contempt: avoid stalemate
+            BoardStatus::Stalemate => Some(DRAW_SCORE),
             BoardStatus::Ongoing => {
                 let rep_count = repetition.count(board_hash(board));
                 if rep_count >= 3 {
-                    Some(-CONTEMPT) // Slight contempt: avoid repetition draws
+                    // Add small random component to avoid 3-fold blindness
+                    Some(DRAW_SCORE - 1 + (nodes & 0x2) as i32)
                 } else if rep_count >= 2 && ply > 0 {
-                    Some(-CONTEMPT)
+                    Some(DRAW_SCORE - 1 + (nodes & 0x2) as i32)
                 } else {
                     None
                 }

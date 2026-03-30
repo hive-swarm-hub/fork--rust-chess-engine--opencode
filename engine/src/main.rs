@@ -1256,15 +1256,21 @@ impl RustAlphaBetaEngine {
             }
         }
 
+        // Null move search with verification
         if effective_depth >= 3
             && !in_check_now
             && cut_node
             && has_non_pawn_material(board, board.side_to_move())
             && beta < MATE_SCORE - 1_000
-            && static_eval.map_or(false, |eval| eval >= beta)
+            && static_eval.map_or(false, |eval| {
+                // Stockfish-style null move threshold
+                let threshold = beta - 16 * effective_depth - 53 * improving as i32 + 378;
+                eval >= threshold
+            })
         {
             if let Some(null_board) = board.null_move() {
-                let reduction = 2 + effective_depth / 3;
+                // Stockfish-style reduction: 7 + depth/3
+                let reduction = 7 + effective_depth / 3;
                 let null_hash = board_hash(&null_board);
                 repetition.push(null_hash);
                 let search = self.negamax(

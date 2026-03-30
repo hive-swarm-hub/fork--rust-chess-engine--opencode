@@ -14,3 +14,4 @@ results.tsv
 # OS files
 .DS_Store
 .claude/
+tournament/

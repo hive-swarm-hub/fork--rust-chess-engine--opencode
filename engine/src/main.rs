@@ -1315,9 +1315,16 @@ impl RustAlphaBetaEngine {
                 if let Some(se_score) = excluded_score {
                     if se_score < se_beta {
                         extension = 1; // TT move is singular
-                        if in_check(&child) {
-                            extension = 2; // Double extension for singular checks
+                                       // Double extension for extremely singular moves or singular checks
+                        if se_score < se_beta - 100 || in_check(&child) {
+                            extension = 2;
                         }
+                    } else if se_score >= beta {
+                        // Multi-Cut: another move besides the TT move also beats beta
+                        return Some(se_score);
+                    } else if tt_entry.unwrap().score >= beta || cut_node {
+                        // Negative extensions (reduction): move is not singular, so reduce its priority
+                        extension = -2;
                     }
                 }
             }

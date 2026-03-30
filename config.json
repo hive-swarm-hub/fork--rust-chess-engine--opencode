@@ -60,7 +60,7 @@
     },
     "config_name": "config.json",
     "output": 0,
-    "seed": 7392406768265844717,
+    "seed": 8106679662648021196,
     "variant": 0,
     "type": 1,
     "gauntlet_seeds": 1,
@@ -318,10 +318,10 @@
             "penta_LL": 0
         },
         "HiveChess vs SF_2700": {
-            "wins": 39,
+            "wins": 37,
             "losses": 1,
             "draws": 2,
-            "penta_WW": 18,
+            "penta_WW": 17,
             "penta_WD": 2,
             "penta_WL": 1,
             "penta_DD": 0,
@@ -329,14 +329,14 @@
             "penta_LL": 0
         },
         "HiveChess vs SF_2800": {
-            "wins": 29,
-            "losses": 2,
+            "wins": 31,
+            "losses": 4,
             "draws": 1,
-            "penta_WW": 14,
-            "penta_WD": 0,
-            "penta_WL": 1,
+            "penta_WW": 13,
+            "penta_WD": 1,
+            "penta_WL": 4,
             "penta_DD": 0,
-            "penta_LD": 1,
+            "penta_LD": 0,
             "penta_LL": 0
         },
         "SF_2600 vs SF_3000": {
@@ -351,23 +351,23 @@
             "penta_LL": 0
         },
         "HiveChess vs SF_3000": {
-            "wins": 10,
-            "losses": 4,
-            "draws": 2,
+            "wins": 8,
+            "losses": 6,
+            "draws": 0,
             "penta_WW": 3,
             "penta_WD": 0,
-            "penta_WL": 4,
-            "penta_DD": 1,
+            "penta_WL": 2,
+            "penta_DD": 0,
             "penta_LD": 0,
-            "penta_LL": 0
+            "penta_LL": 2
         },
         "HiveChess vs SF_2600": {
-            "wins": 45,
-            "losses": 1,
+            "wins": 46,
+            "losses": 0,
             "draws": 0,
-            "penta_WW": 22,
+            "penta_WW": 23,
             "penta_WD": 0,
-            "penta_WL": 1,
+            "penta_WL": 0,
             "penta_DD": 0,
             "penta_LD": 0,
             "penta_LL": 0
@@ -384,13 +384,13 @@
             "penta_LL": 0
         },
         "HiveChess vs SF_2900": {
-            "wins": 15,
-            "losses": 3,
-            "draws": 4,
-            "penta_WW": 5,
-            "penta_WD": 2,
-            "penta_WL": 3,
-            "penta_DD": 1,
+            "wins": 20,
+            "losses": 1,
+            "draws": 3,
+            "penta_WW": 8,
+            "penta_WD": 3,
+            "penta_WL": 1,
+            "penta_DD": 0,
             "penta_LD": 0,
             "penta_LL": 0
         },

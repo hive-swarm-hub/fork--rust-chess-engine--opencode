@@ -1150,25 +1150,17 @@ impl RustAlphaBetaEngine {
             None
         };
 
-        // Store static eval for improving detection (i32::MIN = in-check sentinel)
+        // Store static eval for improving detection
         self.ensure_ply_capacity(ply + 2);
-        self.eval_stack[ply] = static_eval.unwrap_or(i32::MIN);
-        // Improving: compare to 2 plies ago; if that was in-check, fall back to 4 plies ago
-        let improving = !in_check_now && {
-            if ply >= 2 && self.eval_stack[ply - 2] != i32::MIN {
-                static_eval.map_or(false, |e| e > self.eval_stack[ply - 2])
-            } else if ply >= 4 && self.eval_stack[ply - 4] != i32::MIN {
-                static_eval.map_or(false, |e| e > self.eval_stack[ply - 4])
-            } else {
-                false
-            }
-        };
+        self.eval_stack[ply] = static_eval.unwrap_or(0);
+        let improving = !in_check_now
+            && ply >= 2
+            && static_eval.map_or(false, |e| e > self.eval_stack[ply - 2]);
 
         if let Some(eval) = static_eval {
             let rfp_margin = 75 * effective_depth - (50 * improving as i32);
             if effective_depth <= 6 && eval >= beta + rfp_margin && beta < MATE_SCORE - 1_000 {
-                // Soft return (Stockfish/Reckless style): blend eval toward beta
-                return Some(beta + (eval - beta) / 3);
+                return Some(eval);
             }
             if effective_depth <= 3
                 && eval + RAZOR_MARGIN[effective_depth as usize] <= alpha
@@ -1182,6 +1174,7 @@ impl RustAlphaBetaEngine {
             && !in_check_now
             && has_non_pawn_material(board, board.side_to_move())
             && beta < MATE_SCORE - 1_000
+            && static_eval.map_or(false, |e| e >= beta)
         {
             if let Some(null_board) = board.null_move() {
                 let mut reduction = 3 + effective_depth / 4;
@@ -1605,13 +1598,7 @@ impl RustAlphaBetaEngine {
         // Use NNUE evaluation
         let mut acc = self.nnue_stack[ply];
         reckless_nnue::refresh_threats(board, &mut acc);
-        let raw = reckless_nnue::evaluate(board, &acc);
-
-        // Material-based eval scaling (Reckless evaluation.rs formula):
-        // Scale NNUE output up in material-rich positions, down in endgames.
-        // Piece values: P=109, N=403, B=435, R=679, Q=1242
-        let material = board_material(board);
-        let score = raw * (21061 + material) / 26556;
+        let score = reckless_nnue::evaluate(board, &acc);
 
         self.eval_cache[eval_idx] = EvalCacheEntry {
             key: board_key,
@@ -1801,23 +1788,6 @@ impl RustAlphaBetaEngine {
 
 fn board_hash(board: &Board) -> u64 {
     board.get_hash()
-}
-
-/// Total piece material on the board (both sides, excluding kings).
-/// Uses Reckless piece values: P=109, N=403, B=435, R=679, Q=1242.
-fn board_material(board: &Board) -> i32 {
-    const VALS: [(Piece, i32); 5] = [
-        (Piece::Pawn, 109),
-        (Piece::Knight, 403),
-        (Piece::Bishop, 435),
-        (Piece::Rook, 679),
-        (Piece::Queen, 1242),
-    ];
-    let mut total = 0;
-    for (piece, val) in VALS {
-        total += board.pieces(piece).popcnt() as i32 * val;
-    }
-    total
 }
 
 fn available_root_threads() -> usize {

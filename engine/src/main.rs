@@ -190,7 +190,7 @@ use chess::{
     get_bishop_moves, get_king_moves, get_knight_moves, get_pawn_attacks, get_rook_moves, BitBoard,
     Board, BoardStatus, ChessMove, Color, File, MoveGen, Piece, Rank, Square,
 };
-use nnue::stockfish::halfkp::{scale_nn_to_centipawns, SfHalfKpFullModel};
+use nnue::stockfish::halfkp::{SfHalfKpFullModel, scale_nn_to_centipawns};
 
 // NNUE weights (Stockfish HalfKP 256x2-32-32-1)
 const NNUE_WEIGHTS: &[u8] = include_bytes!("nn.nnue");
@@ -210,18 +210,8 @@ fn nnue_evaluate(board: &Board) -> i32 {
     let bk = nnue::Square::from_index(bk_sq.to_index());
     let mut state = model.new_state(wk, bk);
     for &chess_color in &[Color::White, Color::Black] {
-        let nc = if chess_color == Color::White {
-            nnue::Color::White
-        } else {
-            nnue::Color::Black
-        };
-        for &chess_piece in &[
-            Piece::Pawn,
-            Piece::Knight,
-            Piece::Bishop,
-            Piece::Rook,
-            Piece::Queen,
-        ] {
+        let nc = if chess_color == Color::White { nnue::Color::White } else { nnue::Color::Black };
+        for &chess_piece in &[Piece::Pawn, Piece::Knight, Piece::Bishop, Piece::Rook, Piece::Queen] {
             let np = match chess_piece {
                 Piece::Pawn => nnue::Piece::Pawn,
                 Piece::Knight => nnue::Piece::Knight,
@@ -239,11 +229,7 @@ fn nnue_evaluate(board: &Board) -> i32 {
             }
         }
     }
-    let stm = if board.side_to_move() == Color::White {
-        nnue::Color::White
-    } else {
-        nnue::Color::Black
-    };
+    let stm = if board.side_to_move() == Color::White { nnue::Color::White } else { nnue::Color::Black };
     scale_nn_to_centipawns(state.activate(stm)[0])
 }
 
@@ -531,23 +517,6 @@ impl Default for TTEntry {
     }
 }
 
-fn tt_pruning_eval(raw_eval: i32, tt_entry: Option<TTEntry>) -> i32 {
-    let Some(entry) = tt_entry else {
-        return raw_eval;
-    };
-
-    if entry.score.abs() >= MATE_SCORE - 512 {
-        return raw_eval;
-    }
-
-    match entry.flag {
-        EXACT => entry.score,
-        LOWER_BOUND if entry.score > raw_eval => entry.score,
-        UPPER_BOUND if entry.score < raw_eval => entry.score,
-        _ => raw_eval,
-    }
-}
-
 #[derive(Clone, Copy)]
 struct EvalCacheEntry {
     key: u64,
@@ -827,46 +796,26 @@ impl RustAlphaBetaEngine {
         let mut alpha = -INFINITY;
         let mut beta = INFINITY;
         let mut delta = ASPIRATION_WINDOW;
-        let mut reduction = 0;
-        let mut average_score = previous_score.unwrap_or(0);
-
-        // Adjust delta based on average score (Reckless-style)
-        delta += average_score * average_score / 23660;
-
         if let Some(score) = previous_score.filter(|_| depth >= 3) {
             alpha = (score - delta).max(-INFINITY);
             beta = (score + delta).min(INFINITY);
         }
 
         loop {
-            let search_depth = (depth - reduction).max(1);
             let Some((score, best_move)) =
-                self.search_root_window(board, search_depth, alpha, beta, repetition)
+                self.search_root_window(board, depth, alpha, beta, repetition)
             else {
                 break;
             };
 
-            // Update average score for next iteration
-            if average_score == 0 {
-                average_score = score;
-            } else {
-                average_score = (average_score + score) / 2;
-            }
-
             if alpha != -INFINITY && score <= alpha {
-                // Fail low: slower delta growth
-                delta += 27 * delta / 128;
-                beta = (3 * alpha + beta) / 4;
+                delta = delta * 3 / 2;
                 alpha = (score - delta).max(-INFINITY);
-                reduction = 0;
                 continue;
             }
             if beta != INFINITY && score >= beta {
-                // Fail high: faster delta growth, increase reduction
-                delta += 63 * delta / 128;
-                alpha = (beta - delta).max(alpha);
+                delta = delta * 3 / 2;
                 beta = (score + delta).min(INFINITY);
-                reduction += 1;
                 continue;
             }
             return Some((score, best_move));
@@ -900,7 +849,7 @@ impl RustAlphaBetaEngine {
         root_moves.sort_unstable_by(|left, right| right.score.cmp(&left.score));
 
         if !self.should_parallelize_root(depth, root_moves.len()) {
-            let score = self.negamax(board, depth, alpha, beta, 0, 0, repetition)?;
+            let score = self.negamax(board, depth, alpha, beta, 0, repetition)?;
             let tt_idx2 = board_hash(board) as usize & TT_MASK;
             let best_move = {
                 let entry = &self.tt[tt_idx2];
@@ -931,7 +880,7 @@ impl RustAlphaBetaEngine {
         let first_hash = board_hash(&first_child);
         repetition.push(first_hash);
         let mut best_score =
-            -self.negamax(&first_child, depth - 1, -beta, -alpha, 1, 0, repetition)?;
+            -self.negamax(&first_child, depth - 1, -beta, -alpha, 1, repetition)?;
         repetition.pop(first_hash);
         let mut best_move = first_move;
         let current_alpha = alpha.max(best_score);
@@ -1020,7 +969,6 @@ impl RustAlphaBetaEngine {
                 -local_alpha - 1,
                 -local_alpha,
                 1,
-                0,
                 &mut local_repetition,
             )?;
             if score > local_alpha {
@@ -1030,7 +978,6 @@ impl RustAlphaBetaEngine {
                     -beta,
                     -local_alpha,
                     1,
-                    0,
                     &mut local_repetition,
                 )?;
             }
@@ -1125,7 +1072,6 @@ impl RustAlphaBetaEngine {
         mut alpha: i32,
         mut beta: i32,
         ply: usize,
-        prior_reduction: i32,
         repetition: &mut RepetitionTracker,
     ) -> Option<i32> {
         if self.should_stop() {
@@ -1133,7 +1079,7 @@ impl RustAlphaBetaEngine {
         }
         self.nodes += 1;
 
-        if let Some(terminal_score) = self.terminal_score(board, ply, repetition, self.nodes) {
+        if let Some(terminal_score) = self.terminal_score(board, ply, repetition) {
             return Some(terminal_score);
         }
 
@@ -1162,8 +1108,6 @@ impl RustAlphaBetaEngine {
 
         let in_check_now = in_check(board);
         let mut effective_depth = depth;
-        // Approximate Stockfish's cut-node gating with zero-window searches.
-        let cut_node = beta == alpha + 1;
         // Cap check extension to prevent infinite check sequences
         if in_check_now && ply < 80 {
             effective_depth += 1;
@@ -1202,51 +1146,29 @@ impl RustAlphaBetaEngine {
         }
 
         // IIR: reduce depth by 1 when no TT move (saves expensive NNUE IID sub-searches)
-        if tt_move.is_none()
-            && effective_depth >= 6
-            && !in_check_now
-            && cut_node
-            && prior_reduction <= 1
-        {
+        if tt_move.is_none() && effective_depth >= 4 && !in_check_now {
             effective_depth -= 1;
         }
 
-        let raw_static_eval = if !in_check_now {
+        let static_eval = if !in_check_now {
             Some(self.evaluate(board))
         } else {
             None
         };
-        let static_eval = raw_static_eval.map(|eval| tt_pruning_eval(eval, tt_entry));
 
-        // Store the raw eval for improving detection. TT-refined eval is used only for pruning.
+        // Store static eval for improving detection
         self.ensure_ply_capacity(ply + 2);
-        self.eval_stack[ply] = raw_static_eval.unwrap_or(0);
+        self.eval_stack[ply] = static_eval.unwrap_or(0);
         let improving = !in_check_now
             && ply >= 2
-            && raw_static_eval.map_or(false, |e| e > self.eval_stack[ply - 2]);
-
-        // Hindsight adjustment of reductions based on static evaluation difference.
-        // If prior reduction was significant and opponent is not worsening, search deeper.
-        // If prior reduction was moderate and static eval is favorable, reduce depth.
-        let opponent_worsening = !in_check_now
-            && ply >= 1
-            && raw_static_eval.map_or(false, |e| e > -self.eval_stack[ply - 1]);
-        if prior_reduction >= 3 && !opponent_worsening {
-            effective_depth += 1;
-        }
-        if prior_reduction >= 2
-            && effective_depth >= 2
-            && raw_static_eval.map_or(false, |e| e + self.eval_stack[ply - 1] > 195)
-        {
-            effective_depth -= 1;
-        }
+            && static_eval.map_or(false, |e| e > self.eval_stack[ply - 2]);
 
         if let Some(eval) = static_eval {
             if effective_depth <= 4
                 && eval >= beta + REVERSE_FUTILITY_MARGIN[effective_depth as usize]
                 && beta < MATE_SCORE - 1_000
             {
-                return Some((2 * beta + eval) / 3);
+                return Some(eval);
             }
             if effective_depth <= 3
                 && eval + RAZOR_MARGIN[effective_depth as usize] <= alpha
@@ -1256,21 +1178,13 @@ impl RustAlphaBetaEngine {
             }
         }
 
-        // Null move search with verification
         if effective_depth >= 3
             && !in_check_now
-            && cut_node
             && has_non_pawn_material(board, board.side_to_move())
             && beta < MATE_SCORE - 1_000
-            && static_eval.map_or(false, |eval| {
-                // Stockfish-style null move threshold
-                let threshold = beta - 16 * effective_depth - 53 * improving as i32 + 378;
-                eval >= threshold
-            })
         {
             if let Some(null_board) = board.null_move() {
-                // Stockfish-style reduction: 7 + depth/3
-                let reduction = 7 + effective_depth / 3;
+                let reduction = 2 + effective_depth / 3;
                 let null_hash = board_hash(&null_board);
                 repetition.push(null_hash);
                 let search = self.negamax(
@@ -1279,7 +1193,6 @@ impl RustAlphaBetaEngine {
                     -beta,
                     -beta + 1,
                     ply + 1,
-                    0,
                     repetition,
                 );
                 repetition.pop(null_hash);
@@ -1291,7 +1204,10 @@ impl RustAlphaBetaEngine {
         }
 
         // ProbCut: shallow search with raised beta on captures to detect likely cutoffs
-        if effective_depth >= 5 && !in_check_now && beta.abs() < MATE_SCORE - 512 {
+        if effective_depth >= 5
+            && !in_check_now
+            && beta.abs() < MATE_SCORE - 512
+        {
             let probcut_beta = beta + 200;
             let probcut_depth = effective_depth - 4;
             let mut probcut_moves = self.scored_moves(board, tt_move, ply, true);
@@ -1311,7 +1227,6 @@ impl RustAlphaBetaEngine {
                     -probcut_beta,
                     -probcut_beta + 1,
                     ply + 1,
-                    0,
                     repetition,
                 );
                 repetition.pop(child_hash);
@@ -1419,13 +1334,11 @@ impl RustAlphaBetaEngine {
                         -beta,
                         -alpha,
                         ply + 1,
-                        0,
                         repetition,
                     )?);
                 }
 
                 let mut search_depth = effective_depth - 1;
-                let mut child_prior_reduction = 0;
                 if effective_depth >= 4
                     && move_count > 3
                     && is_quiet
@@ -1435,12 +1348,6 @@ impl RustAlphaBetaEngine {
                     let mut reduction = late_move_reduction(effective_depth, move_count);
                     // Reduce less for countermoves and killers
                     let mk = move_key(chess_move) as usize;
-                    if cut_node && tt_move.is_none() {
-                        reduction += 1;
-                    }
-                    if tt_move == Some(chess_move) {
-                        reduction = (reduction - 1).max(0);
-                    }
                     if self.killer_moves.get(ply).map_or(false, |k| {
                         k[0] == Some(chess_move) || k[1] == Some(chess_move)
                     }) {
@@ -1457,10 +1364,6 @@ impl RustAlphaBetaEngine {
                     } else if hist > 8000 {
                         reduction = (reduction - 1).max(0);
                     }
-                    if prior_reduction >= 2 {
-                        reduction = (reduction - 1).max(0);
-                    }
-                    child_prior_reduction = reduction;
                     search_depth = (search_depth - reduction).max(0);
                 }
 
@@ -1470,7 +1373,6 @@ impl RustAlphaBetaEngine {
                     -alpha - 1,
                     -alpha,
                     ply + 1,
-                    child_prior_reduction,
                     repetition,
                 )?;
                 if score > alpha && search_depth != effective_depth - 1 {
@@ -1480,7 +1382,6 @@ impl RustAlphaBetaEngine {
                         -alpha - 1,
                         -alpha,
                         ply + 1,
-                        0,
                         repetition,
                     )?;
                 }
@@ -1491,7 +1392,6 @@ impl RustAlphaBetaEngine {
                         -beta,
                         -alpha,
                         ply + 1,
-                        0,
                         repetition,
                     )?;
                 }
@@ -1537,7 +1437,7 @@ impl RustAlphaBetaEngine {
 
         if best_move.is_none() {
             return Some(
-                self.terminal_score(board, ply, repetition, self.nodes)
+                self.terminal_score(board, ply, repetition)
                     .unwrap_or(DRAW_SCORE),
             );
         }
@@ -1576,7 +1476,7 @@ impl RustAlphaBetaEngine {
         }
         self.nodes += 1;
 
-        if let Some(terminal_score) = self.terminal_score(board, ply, repetition, self.nodes) {
+        if let Some(terminal_score) = self.terminal_score(board, ply, repetition) {
             return Some(terminal_score);
         }
 
@@ -1647,7 +1547,7 @@ impl RustAlphaBetaEngine {
             let child = board.make_move_new(chess_move);
             let child_hash = board_hash(&child);
             repetition.push(child_hash);
-            let score = -self.negamax(&child, depth - 1, -beta, -alpha, ply + 1, 0, repetition)?;
+            let score = -self.negamax(&child, depth - 1, -beta, -alpha, ply + 1, repetition)?;
             repetition.pop(child_hash);
 
             if score > best_score {
@@ -1687,10 +1587,7 @@ impl RustAlphaBetaEngine {
 
         // Use NNUE evaluation (much stronger than HCE)
         let score = nnue_evaluate(board);
-        self.eval_cache[eval_idx] = EvalCacheEntry {
-            key: board_key,
-            score,
-        };
+        self.eval_cache[eval_idx] = EvalCacheEntry { key: board_key, score };
         return score;
 
         // HCE fallback (unreachable when NNUE is loaded)
@@ -1889,18 +1786,16 @@ impl RustAlphaBetaEngine {
         board: &Board,
         ply: usize,
         repetition: &RepetitionTracker,
-        nodes: u64,
     ) -> Option<i32> {
         match board.status() {
             BoardStatus::Checkmate => Some(-MATE_SCORE + ply as i32),
-            BoardStatus::Stalemate => Some(DRAW_SCORE),
+            BoardStatus::Stalemate => Some(-CONTEMPT), // Slight contempt: avoid stalemate
             BoardStatus::Ongoing => {
                 let rep_count = repetition.count(board_hash(board));
                 if rep_count >= 3 {
-                    // Add small random component to avoid 3-fold blindness
-                    Some(DRAW_SCORE - 1 + (nodes & 0x2) as i32)
+                    Some(-CONTEMPT) // Slight contempt: avoid repetition draws
                 } else if rep_count >= 2 && ply > 0 {
-                    Some(DRAW_SCORE - 1 + (nodes & 0x2) as i32)
+                    Some(-CONTEMPT)
                 } else {
                     None
                 }

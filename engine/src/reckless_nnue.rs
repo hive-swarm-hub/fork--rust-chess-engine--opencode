@@ -4,6 +4,9 @@ use chess::{
 };
 use std::sync::OnceLock;
 
+#[cfg(target_arch = "x86_64")]
+use std::arch::x86_64::*;
+
 pub const L1_SIZE: usize = 768;
 pub const L2_SIZE: usize = 16;
 pub const L3_SIZE: usize = 32;
@@ -78,29 +81,16 @@ fn initialize_threat_lookups() {
 
     const PIECE_TARGET_COUNT: [i32; 6] = [6, 10, 8, 8, 10, 8];
 
+    let mut offset = 0;
+    let mut piece_offsets = [0; 12];
+    let mut offset_tables = [0; 12];
+
     for pc in 0..2 {
         for pt in 0..6 {
             let piece = (pt << 1) | pc;
             let mut count = 0;
             for square in 0..64 {
                 unsafe { PIECE_OFFSET_LOOKUP[piece][square] = count };
-                if pt != 0 || (square >= 8 && square < 56) {
-                    count += reckless_attacks(pt as u8, pc as u8, square as u8, 0).popcnt() as i32;
-                }
-            }
-            // piece_offsets and offset_tables are local to Reckless initialization
-        }
-    }
-
-    // Recalculate tables to match Reckless exactly
-    let mut offset = 0;
-    let mut piece_offsets = [0; 12];
-    let mut offset_tables = [0; 12];
-    for pc in 0..2 {
-        for pt in 0..6 {
-            let piece = (pt << 1) | pc;
-            let mut count = 0;
-            for square in 0..64 {
                 if pt != 0 || (square >= 8 && square < 56) {
                     count += reckless_attacks(pt as u8, pc as u8, square as u8, 0).popcnt() as i32;
                 }
@@ -200,8 +190,9 @@ pub fn evaluate(board: &Board, acc: &Accumulator) -> i32 {
     let stm = board.side_to_move();
 
     let mut ft_out = [0u8; L1_SIZE];
-    let stm_idx = if stm == Color::White { 0 } else { 1 };
 
+    // Scalar implementation for stability
+    let stm_idx = if stm == Color::White { 0 } else { 1 };
     for flip in 0..2 {
         let idx = stm_idx ^ flip;
         let psq_vals = &acc.psq[idx];
@@ -214,6 +205,7 @@ pub fn evaluate(board: &Board, acc: &Accumulator) -> i32 {
         }
     }
 
+    let mut l2_out = [0.0f32; L2_SIZE];
     let mut pre_activations = [0i32; L2_SIZE];
     for i in 0..L1_SIZE {
         if ft_out[i] == 0 {
@@ -226,8 +218,6 @@ pub fn evaluate(board: &Board, acc: &Accumulator) -> i32 {
             pre_activations[j] += ft_out[i] as i32 * chunk_weights[j * 4 + k] as i32;
         }
     }
-
-    let mut l2_out = [0.0f32; L2_SIZE];
     for i in 0..L2_SIZE {
         l2_out[i] = (pre_activations[i] as f32 * DEQUANT_MULTIPLIER + params.l1_biases[bucket][i])
             .max(0.0)
@@ -455,14 +445,17 @@ mod tests {
         println!("Startpos score: {}", score);
     }
     #[test]
-    fn test_after_e4() {
+    fn test_update() {
         load_parameters();
-        let mut board = Board::default();
+        let board = Board::default();
+        let acc_full = full_refresh_psq(&board);
         let m = ChessMove::from_str("e2e4").unwrap();
-        board = board.make_move_new(m);
-        let mut acc = full_refresh_psq(&board);
-        refresh_threats(&board, &mut acc);
-        let score = evaluate(&board, &acc);
-        println!("After e4 score (Black to move): {}", score);
+        let next_board = board.make_move_new(m);
+        let acc_updated = update(&board, m, &acc_full);
+        let acc_refreshed = full_refresh_psq(&next_board);
+        for i in 0..L1_SIZE {
+            assert_eq!(acc_updated.psq[0][i], acc_refreshed.psq[0][i]);
+            assert_eq!(acc_updated.psq[1][i], acc_refreshed.psq[1][i]);
+        }
     }
 }

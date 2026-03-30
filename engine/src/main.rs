@@ -466,8 +466,8 @@ static LMR_TABLE: [[i32; 64]; 64] = {
             };
             let ln_d = log2_d * ln2;
             let ln_m = log2_m * ln2;
-            let r = (0.75 + ln_d * ln_m / 2.25) as i32;
-            table[depth][moves] = if r < 1 { 1 } else { r };
+            let r = (0.50 + ln_d * ln_m / 1.58) as i32;
+            table[depth][moves] = if r < 0 { 0 } else { r };
             moves += 1;
         }
         depth += 1;
@@ -794,12 +794,14 @@ impl RustAlphaBetaEngine {
             };
 
             if alpha != -INFINITY && score <= alpha {
-                delta = delta * 3 / 2;
+                beta = (3 * alpha + beta) / 4;
+                delta = delta * 5 / 4;
                 alpha = (score - delta).max(-INFINITY);
                 continue;
             }
             if beta != INFINITY && score >= beta {
-                delta = delta * 3 / 2;
+                alpha = (alpha + beta) / 2;
+                delta = delta * 5 / 4;
                 beta = (score + delta).min(INFINITY);
                 continue;
             }
@@ -1173,7 +1175,12 @@ impl RustAlphaBetaEngine {
             && beta < MATE_SCORE - 1_000
         {
             if let Some(null_board) = board.null_move() {
-                let reduction = 2 + effective_depth / 3;
+                let mut reduction = 3 + effective_depth / 4;
+                if let Some(eval) = static_eval {
+                    let margin = (eval - beta) / 200;
+                    reduction += margin.clamp(0, 3);
+                }
+
                 let null_hash = board_hash(&null_board);
                 repetition.push(null_hash);
                 self.nnue_stack[ply + 1] = self.nnue_stack[ply];
@@ -1264,20 +1271,22 @@ impl RustAlphaBetaEngine {
 
             if is_quiet && !in_check_now && !gives_check_move {
                 if let Some(eval) = static_eval {
-                    if effective_depth <= 4
+                    let history = self.history_heuristic[move_key(chess_move) as usize];
+                    if effective_depth <= 7
                         && move_count > 1
-                        && eval + FUTILITY_MARGIN[effective_depth as usize] <= alpha
+                        && eval + 100 * effective_depth + history / 64 <= alpha
                     {
                         continue;
                     }
                 }
-                if move_count > late_move_pruning_limit(effective_depth) {
+                if move_count > late_move_pruning_limit(effective_depth, improving) {
                     continue;
                 }
-                // SEE pruning for quiet moves at low depth
-                if effective_depth <= 4
-                    && move_count > 3
-                    && static_exchange_eval(board, chess_move) < -50 * effective_depth
+                // SEE pruning for quiet moves
+                let see_threshold = -15 * effective_depth * effective_depth;
+                if effective_depth <= 6
+                    && move_count > 2
+                    && static_exchange_eval(board, chess_move) < see_threshold
                 {
                     continue;
                 }
@@ -1304,7 +1313,10 @@ impl RustAlphaBetaEngine {
                 );
                 if let Some(se_score) = excluded_score {
                     if se_score < se_beta {
-                        extension = 1; // TT move is singular, extend it
+                        extension = 1; // TT move is singular
+                        if in_check(&child) {
+                            extension = 2; // Double extension for singular checks
+                        }
                     }
                 }
             }
@@ -1330,31 +1342,28 @@ impl RustAlphaBetaEngine {
                 }
 
                 let mut search_depth = effective_depth - 1;
-                if effective_depth >= 4
-                    && move_count > 3
+                if effective_depth >= 3
+                    && move_count > 2
                     && is_quiet
                     && !in_check_now
                     && !gives_check_move
                 {
                     let mut reduction = late_move_reduction(effective_depth, move_count);
-                    // Reduce less for countermoves and killers
+                    // Reduce less for killers
                     let mk = move_key(chess_move) as usize;
                     if self.killer_moves.get(ply).map_or(false, |k| {
                         k[0] == Some(chess_move) || k[1] == Some(chess_move)
                     }) {
-                        reduction = (reduction - 1).max(0);
+                        reduction -= 1;
                     }
                     // Reduce more if not improving
                     if !improving {
                         reduction += 1;
                     }
-                    // Reduce more for moves with bad history
+                    // History adjustment
                     let hist = self.history_heuristic[mk];
-                    if hist < -2000 {
-                        reduction += 1;
-                    } else if hist > 8000 {
-                        reduction = (reduction - 1).max(0);
-                    }
+                    reduction -= hist / 10000;
+                    
                     search_depth = (search_depth - reduction).max(0);
                 }
 
@@ -2064,17 +2073,15 @@ fn late_move_reduction(depth: i32, move_count: usize) -> i32 {
     LMR_TABLE[d][m]
 }
 
-fn late_move_pruning_limit(depth: i32) -> usize {
-    match depth {
-        d if d <= 1 => 4,
-        2 => 9,
-        3 => 14,
-        4 => 20,
-        5 => 28,
-        6 => 38,
-        7 => 50,
-        8 => 65,
-        _ => usize::MAX,
+fn late_move_pruning_limit(depth: i32, improving: bool) -> usize {
+    if depth > 8 {
+        return usize::MAX;
+    }
+    let base = 3 + (depth * depth) as usize;
+    if improving {
+        base * 2
+    } else {
+        base
     }
 }
 

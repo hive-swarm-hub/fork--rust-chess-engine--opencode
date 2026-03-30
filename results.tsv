@@ -78,3 +78,5 @@ b18f46e	2969.5	10	keep	nnue-rs NNUE (HalfKP 256x2-32-32-1) on contempt=0 optimiz
 a841daf	3225.5	10	keep	IIR on NNUE base — 8W/2D/0L ZERO LOSSES! NEW ALL-TIME BEST!
 0742e84	3139.9	10	discard	lazy NNUE (material eval for pruning) — 8W/1D/1L, material-only pruning too imprecise
 239ac15	3332.4	38	keep	SPRT baseline on new eval: 35W/2D/1L in 38 games = 3332.4! Statistically significant!
+141c284	3125.4	N/A	keep	Reckless v58 NNUE integration with incremental PSQ (baseline for 40/120 TC)
+141c284f136e47bf021889f88cd6ca7419bddba2	3133.6	N/A	keep	Aspiration recovery, double singular ext, improved LMP, aggressive pruning (+8.2 ELO)

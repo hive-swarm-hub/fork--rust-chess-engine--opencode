@@ -870,9 +870,6 @@ impl RustAlphaBetaEngine {
                 continue;
             }
             return Some((score, best_move));
-                continue;
-            }
-            return Some((score, best_move));
         }
 
         None

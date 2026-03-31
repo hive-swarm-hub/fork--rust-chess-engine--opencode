@@ -1251,6 +1251,7 @@ impl RustAlphaBetaEngine {
         let mut move_picker = self.scored_moves(board, tt_move, ply, false);
         let mut searched_quiets: Vec<ChessMove> = Vec::with_capacity(16);
         let mut searched_captures: Vec<(ChessMove, Piece)> = Vec::with_capacity(8);
+        let mut alpha_raises: i32 = 0; // count alpha improvements; later moves get more LMR
 
         for index in 0..move_picker.len() {
             if self.should_stop() {
@@ -1365,6 +1366,8 @@ impl RustAlphaBetaEngine {
                     // History adjustment
                     let hist = self.history_heuristic[mk];
                     reduction -= hist / 10000;
+                    // Reduce more after alpha has been raised (Reckless: +1300/1024 per raise)
+                    reduction += alpha_raises;
 
                     search_depth = (search_depth - reduction).max(0);
                 }
@@ -1408,6 +1411,7 @@ impl RustAlphaBetaEngine {
             }
             if score > alpha {
                 alpha = score;
+                alpha_raises += 1;
             }
             if alpha >= beta {
                 let bonus = effective_depth * effective_depth;

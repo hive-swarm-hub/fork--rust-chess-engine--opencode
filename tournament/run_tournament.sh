@@ -102,7 +102,7 @@ CMD+=(-engine "cmd=$HIVECHESS" "name=hivechess"
 for bin in "${OPPONENTS[@]}"; do
     name="$(basename "$bin")"
     CMD+=(-engine "cmd=$bin" "name=$name"
-          "option.Hash=$HASH" "option.Threads=$THREADS")
+          "option.Hash=$HASH")
     [[ -n "$SYZYGY_PATH" ]] && CMD+=("option.SyzygyPath=$SYZYGY_PATH")
 done
 

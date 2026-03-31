@@ -18,6 +18,7 @@ import os
 
 # ── CCRL Blitz ELO seeds (March 2026) ────────────────────────────────────────
 CCRL = {
+    "lizard":     3740, "oxidation":  2362,
     "stockfish":  3792, "stormphrax": 3750, "viridithas": 3742,
     "koivisto":   3689, "tcheran":    3634, "blackmarlin": 3629,
     "akimbo":     3621, "patricia":   3542, "carp":        3529,

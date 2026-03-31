@@ -1145,21 +1145,7 @@ impl RustAlphaBetaEngine {
         }
 
         let static_eval = if !in_check_now {
-            let raw_eval = self.evaluate(board, ply);
-            // TT value as eval override: if TT bound is consistent with TT value being
-            // a better estimate than static eval, use TT value for pruning decisions
-            let refined_eval = if let Some(entry) = tt_entry {
-                if (entry.flag == LOWER_BOUND && entry.score > raw_eval)
-                    || (entry.flag == UPPER_BOUND && entry.score < raw_eval)
-                {
-                    entry.score
-                } else {
-                    raw_eval
-                }
-            } else {
-                raw_eval
-            };
-            Some(refined_eval)
+            Some(self.evaluate(board, ply))
         } else {
             None
         };

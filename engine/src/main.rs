@@ -1176,7 +1176,8 @@ impl RustAlphaBetaEngine {
             && beta < MATE_SCORE - 1_000
         {
             if let Some(null_board) = board.null_move() {
-                let mut reduction = 3 + effective_depth / 4;
+                // NMP reduction: slightly less aggressive (base 3 -> 2.5 effective via rounding)
+                let mut reduction = 2 + (effective_depth + 1) / 4;
                 if let Some(eval) = static_eval {
                     let margin = (eval - beta) / 200;
                     reduction += margin.clamp(0, 3);

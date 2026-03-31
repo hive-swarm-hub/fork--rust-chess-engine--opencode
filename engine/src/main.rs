@@ -603,6 +603,7 @@ struct RustAlphaBetaEngine {
     countermove: Vec<Option<ChessMove>>, // indexed by previous move's move_key
     move_stack: Vec<Option<ChessMove>>,  // move played at each ply for countermove tracking
     eval_stack: Vec<i32>,                // static eval at each ply for improving detection
+    reduction_stack: Vec<i32>,           // LMR reduction applied to reach each ply
     nnue_stack: Vec<reckless_nnue::Accumulator>,
     eval_cache: Vec<EvalCacheEntry>,
     pawn_cache: Vec<PawnCacheEntry>,
@@ -624,6 +625,7 @@ impl RustAlphaBetaEngine {
             countermove: vec![None; HISTORY_SIZE],
             move_stack: vec![None; KILLER_PLY_CAPACITY],
             eval_stack: vec![0; KILLER_PLY_CAPACITY],
+            reduction_stack: vec![0; KILLER_PLY_CAPACITY],
             nnue_stack: vec![reckless_nnue::Accumulator::new(); KILLER_PLY_CAPACITY],
             eval_cache: vec![EvalCacheEntry::default(); EVAL_CACHE_SIZE],
             pawn_cache: vec![PawnCacheEntry::default(); PAWN_CACHE_SIZE],
@@ -1006,6 +1008,7 @@ impl RustAlphaBetaEngine {
             countermove: self.countermove.clone(),
             move_stack: self.move_stack.clone(),
             eval_stack: self.eval_stack.clone(),
+            reduction_stack: self.reduction_stack.clone(),
             nnue_stack: self.nnue_stack.clone(),
             eval_cache: self.eval_cache.clone(),
             pawn_cache: self.pawn_cache.clone(),
@@ -1156,6 +1159,15 @@ impl RustAlphaBetaEngine {
         let improving = !in_check_now
             && ply >= 2
             && static_eval.map_or(false, |e| e > self.eval_stack[ply - 2]);
+
+        // Hindsight extension (Reckless): parent was heavily reduced AND position is net negative
+        // If parent under-estimated this node, extend to resolve it properly
+        if ply >= 1
+            && self.reduction_stack[ply] >= 2
+            && static_eval.map_or(false, |e| e + self.eval_stack[ply - 1] < 0)
+        {
+            effective_depth += 1;
+        }
 
         if let Some(eval) = static_eval {
             let rfp_margin = 75 * effective_depth - (50 * improving as i32);
@@ -1368,6 +1380,10 @@ impl RustAlphaBetaEngine {
 
                     search_depth = (search_depth - reduction).max(0);
                 }
+
+                // Store reduction applied to child ply for hindsight extension
+                self.ensure_ply_capacity(ply + 2);
+                self.reduction_stack[ply + 1] = (effective_depth - 1) - search_depth;
 
                 let mut score = -self.negamax(
                     &child,
@@ -1741,6 +1757,9 @@ impl RustAlphaBetaEngine {
         }
         if self.eval_stack.len() < size {
             self.eval_stack.resize(size, 0);
+        }
+        if self.reduction_stack.len() < size {
+            self.reduction_stack.resize(size, 0);
         }
     }
 

@@ -1,0 +1,8 @@
+engine	version	ccrl_blitz_elo	ccrl_name	notes
+plentychess	b-v7.0.0	3775	PlentyChess 6.0.2 64-bit 8CPU	CCRL rating for 6.0.2; b-v7.0.0 is newer, expected higher
+horsie	v1.1	3742	Horsie 1.1.0 64-bit 8CPU
+lizard	v11.2	3740	Lizard 11.2 64-bit 8CPU
+oxidation	v0.7.2	2362	Oxidation 0.7.1 64-bit	Liberty Chess engine; v0.7.1 in CCRL, downloaded v0.7.2
+stockfish	17	3792	Stockfish 17.1 64-bit 8CPU
+stormphrax	7.0.0	3750	Stormphrax 7.0.0 64-bit 8CPU
+viridithas	19.0.1	3742	Viridithas 19.0.1 64-bit

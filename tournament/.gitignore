@@ -1,3 +1,4 @@
 *.pgn
-engines
-books
+engines/
+books/
+__pycache__/

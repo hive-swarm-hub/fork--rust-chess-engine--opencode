@@ -2080,7 +2080,8 @@ fn late_move_pruning_limit(depth: i32, improving: bool) -> usize {
     if depth > 8 {
         return usize::MAX;
     }
-    let base = 3 + (depth * depth) as usize;
+    // Slightly more aggressive LMP: 2.5 + d^2 (was 3 + d^2)
+    let base = 2 + (depth * depth) as usize + (depth as usize) / 2;
     if improving {
         base * 2
     } else {

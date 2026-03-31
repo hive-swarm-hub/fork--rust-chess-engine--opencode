@@ -1176,8 +1176,7 @@ impl RustAlphaBetaEngine {
             && beta < MATE_SCORE - 1_000
         {
             if let Some(null_board) = board.null_move() {
-                // NMP reduction: slightly less aggressive (base 3 -> 2.5 effective via rounding)
-                let mut reduction = 2 + (effective_depth + 1) / 4;
+                let mut reduction = 3 + effective_depth / 4;
                 if let Some(eval) = static_eval {
                     let margin = (eval - beta) / 200;
                     reduction += margin.clamp(0, 3);
@@ -1285,8 +1284,8 @@ impl RustAlphaBetaEngine {
                 if cut_node && move_count > late_move_pruning_limit(effective_depth, improving) {
                     continue;
                 }
-                // SEE pruning for quiet moves (slightly less aggressive: -12 vs -15)
-                let see_threshold = -12 * effective_depth * effective_depth;
+                // SEE pruning for quiet moves
+                let see_threshold = -15 * effective_depth * effective_depth;
                 if effective_depth <= 6
                     && move_count > 2
                     && static_exchange_eval(board, chess_move) < see_threshold
@@ -2080,8 +2079,7 @@ fn late_move_pruning_limit(depth: i32, improving: bool) -> usize {
     if depth > 8 {
         return usize::MAX;
     }
-    // Slightly more aggressive LMP: 2.5 + d^2 (was 3 + d^2)
-    let base = 2 + (depth * depth) as usize + (depth as usize) / 2;
+    let base = 3 + (depth * depth) as usize;
     if improving {
         base * 2
     } else {

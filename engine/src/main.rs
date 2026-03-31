@@ -33,7 +33,29 @@ fn main() {
             "uci" => {
                 send("id name HiveChess 0.3");
                 send("id author HiveAgent");
+                send("option name Hash type spin default 64 min 1 max 65536");
+                send(&format!("option name Threads type spin default 1 min 1 max {}", available_root_threads()));
                 send("uciok");
+            }
+            "setoption" => {
+                match tokens.as_slice() {
+                    [_, "name", "Hash", "value", v] => {
+                        if let Ok(mb) = v.parse::<usize>() {
+                            let bytes = mb * 1024 * 1024;
+                            let entry_size = std::mem::size_of::<TTEntry>().max(1);
+                            let count = (bytes / entry_size).next_power_of_two() >> 1;
+                            let count = count.max(1);
+                            engine.tt = vec![TTEntry::default(); count];
+                            engine.tt_mask = count - 1;
+                        }
+                    }
+                    [_, "name", "Threads", "value", v] => {
+                        if let Ok(n) = v.parse::<usize>() {
+                            engine.threads = n.max(1).min(available_root_threads());
+                        }
+                    }
+                    _ => {}
+                }
             }
             "isready" => send("readyok"),
             "ucinewgame" => {
@@ -597,6 +619,7 @@ struct RustAlphaBetaEngine {
     threads: usize,
     nodes: u64,
     tt: Vec<TTEntry>,
+    tt_mask: usize,
     killer_moves: Vec<[Option<ChessMove>; 2]>,
     history_heuristic: Vec<i32>,
     capture_history: Vec<i16>,
@@ -618,6 +641,7 @@ impl RustAlphaBetaEngine {
             threads: available_root_threads(),
             nodes: 0,
             tt: vec![TTEntry::default(); TT_SIZE],
+            tt_mask: TT_SIZE - 1,
             killer_moves: vec![[None, None]; KILLER_PLY_CAPACITY],
             history_heuristic: vec![0; HISTORY_SIZE],
             capture_history: vec![0; HISTORY_SIZE * CAPTURE_HISTORY_PIECES],
@@ -820,7 +844,7 @@ impl RustAlphaBetaEngine {
         repetition: &mut RepetitionTracker,
     ) -> Option<(i32, ChessMove)> {
         let tt_key = board_hash(board);
-        let tt_idx = tt_key as usize & TT_MASK;
+        let tt_idx = tt_key as usize & self.tt_mask;
         let tt_move = {
             let entry = &self.tt[tt_idx];
             if entry.key == tt_key {
@@ -838,7 +862,7 @@ impl RustAlphaBetaEngine {
         if !self.should_parallelize_root(depth, root_moves.len()) {
             self.nnue_stack[0] = reckless_nnue::full_refresh_psq(board);
             let score = self.negamax(board, depth, alpha, beta, 0, repetition)?;
-            let tt_idx2 = board_hash(board) as usize & TT_MASK;
+            let tt_idx2 = board_hash(board) as usize & self.tt_mask;
             let best_move = {
                 let entry = &self.tt[tt_idx2];
                 if entry.key == board_hash(board) {
@@ -1000,6 +1024,7 @@ impl RustAlphaBetaEngine {
             threads: 1,
             nodes: 0,
             tt: self.tt.clone(),
+            tt_mask: self.tt_mask,
             killer_moves: self.killer_moves.clone(),
             history_heuristic: self.history_heuristic.clone(),
             capture_history: self.capture_history.clone(),
@@ -1043,7 +1068,7 @@ impl RustAlphaBetaEngine {
             EXACT
         };
         let key = board_hash(board);
-        let idx = key as usize & TT_MASK;
+        let idx = key as usize & self.tt_mask;
         let existing = &self.tt[idx];
         if existing.key == 0 || depth >= existing.depth || existing.key == key {
             self.tt[idx] = TTEntry {
@@ -1111,7 +1136,7 @@ impl RustAlphaBetaEngine {
         let alpha_original = alpha;
         let beta_original = beta;
         let tt_key = board_hash(board);
-        let tt_idx = tt_key as usize & TT_MASK;
+        let tt_idx = tt_key as usize & self.tt_mask;
         let tt_entry = {
             let entry = self.tt[tt_idx];
             if entry.key == tt_key {
@@ -1763,7 +1788,7 @@ impl RustAlphaBetaEngine {
 
         for _ in 0..depth {
             let key = board_hash(&board);
-            let idx = key as usize & TT_MASK;
+            let idx = key as usize & self.tt_mask;
             let entry = &self.tt[idx];
             if entry.key != key {
                 break;

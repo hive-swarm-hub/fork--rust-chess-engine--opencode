@@ -1300,6 +1300,10 @@ impl RustAlphaBetaEngine {
 
             // Singular extension: extend TT move if it's singularly better
             let mut extension = 0;
+            // Check extension: extend by 1 when move gives check (important tactical moves)
+            if gives_check_move && effective_depth <= 6 {
+                extension = 1;
+            }
             if singular_move == Some(chess_move) {
                 let se_beta = tt_entry.unwrap().score - 2 * effective_depth;
                 let se_depth = (effective_depth - 1) / 2;

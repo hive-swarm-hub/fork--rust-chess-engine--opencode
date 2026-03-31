@@ -1366,8 +1366,10 @@ impl RustAlphaBetaEngine {
                     // History adjustment
                     let hist = self.history_heuristic[mk];
                     reduction -= hist / 10000;
-                    // Reduce more after alpha has been raised (Reckless: +1300/1024 per raise)
-                    reduction += alpha_raises;
+                    // Reduce more after alpha has been raised (binary: +1 once alpha improved)
+                    if alpha_raises > 0 {
+                        reduction += 1;
+                    }
 
                     search_depth = (search_depth - reduction).max(0);
                 }

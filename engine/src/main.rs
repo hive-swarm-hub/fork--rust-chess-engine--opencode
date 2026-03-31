@@ -1143,6 +1143,10 @@ impl RustAlphaBetaEngine {
         if tt_move.is_none() && effective_depth >= 4 && !in_check_now && cut_node {
             effective_depth -= 1;
         }
+        // Check extension: +1 depth when side to move is in check (very selective, resolves checks)
+        if in_check_now {
+            effective_depth += 1;
+        }
 
         let static_eval = if !in_check_now {
             Some(self.evaluate(board, ply))
@@ -1300,10 +1304,6 @@ impl RustAlphaBetaEngine {
 
             // Singular extension: extend TT move if it's singularly better
             let mut extension = 0;
-            // Check extension: extend by 1 when move gives check (important tactical moves)
-            if gives_check_move && effective_depth <= 6 {
-                extension = 1;
-            }
             if singular_move == Some(chess_move) {
                 let se_beta = tt_entry.unwrap().score - 2 * effective_depth;
                 let se_depth = (effective_depth - 1) / 2;

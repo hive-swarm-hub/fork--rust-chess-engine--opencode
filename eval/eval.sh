@@ -281,3 +281,84 @@ fi
 summary "$ELO" "${GAMES_PLAYED:-0}" "${SCORE_PCT:-0.000}" \
     "${TOTAL_WINS:-0}" "${TOTAL_DRAWS:-0}" "${TOTAL_LOSSES:-0}" \
     "$BINARY_BYTES" "$LINE_COUNT" "$COMPILE_SECS" "$VALID"
+
+# --- Head-to-head vs best known engine (SPRT, elo0=0 elo1=20) ---
+BEST_ENGINE_SAVE="eval/best-hive-chess"
+BEST_ELO_FILE="eval/best_elo.txt"
+H2H_PGN="eval/h2h_games.pgn"
+H2H_SPRT_VERDICT="N/A"
+H2H_ELO_DIFF="N/A"
+H2H_IS_NEW_BEST="false"
+
+# Only run H2H if gauntlet ELO beats the stored best
+BEST_ELO_STORED_PRE="0"
+if [ -f "$BEST_ELO_FILE" ]; then
+    BEST_ELO_STORED_PRE=$(cat "$BEST_ELO_FILE")
+fi
+ELO_BEATS_BEST=$(python3 -c "
+try:
+    print('true' if float('${ELO:-0}') > float('${BEST_ELO_STORED_PRE:-0}') else 'false')
+except:
+    print('false')
+" 2>/dev/null)
+
+if [ -f "$BEST_ENGINE_SAVE" ] && [ "$VALID" = "true" ] && [ "$ELO_BEATS_BEST" = "true" ]; then
+    echo "Gauntlet ELO $ELO > best $BEST_ELO_STORED_PRE — running H2H SPRT (elo0=0 elo1=20)..." >&2
+    H2H_LOG=$(mktemp)
+    rm -f "$H2H_PGN"
+    H2H_CMD="$TOOLS_DIR/fastchess"
+    H2H_CMD="$H2H_CMD -concurrency $CONCURRENCY -sprt elo0=0 elo1=20 alpha=0.05 beta=0.05 $ADJUDICATION"
+    H2H_CMD="$H2H_CMD -engine cmd=$ENGINE_BIN proto=uci name=NewEngine tc=$TC"
+    H2H_CMD="$H2H_CMD -engine cmd=$BEST_ENGINE_SAVE proto=uci name=BestEngine tc=$TC"
+    H2H_CMD="$H2H_CMD -tournament gauntlet -rounds 500 -games 2 -repeat"
+    H2H_CMD="$H2H_CMD -pgnout file=$H2H_PGN -recover -wait 50"
+    if [ -f "$OPENINGS" ]; then
+        H2H_CMD="$H2H_CMD -openings file=$OPENINGS format=epd order=random"
+    fi
+    echo "H2H: $H2H_CMD" >&2
+    $H2H_CMD > "$H2H_LOG" 2>&1 || true
+    cat "$H2H_LOG" >&2
+
+    if grep -q '\[H1\]' "$H2H_LOG"; then
+        H2H_SPRT_VERDICT="H1"; H2H_IS_NEW_BEST="true"
+    elif grep -q '\[H0\]' "$H2H_LOG"; then
+        H2H_SPRT_VERDICT="H0"
+    else
+        H2H_SPRT_VERDICT="inconclusive"
+    fi
+
+    H2H_ELO_DIFF=$(python3 - < "$H2H_LOG" <<'PYEOF'
+import sys, re, math
+log = sys.stdin.read()
+wins = losses = draws = 0
+m = re.search(r'Results of NewEngine vs BestEngine.*?Games:\s*(\d+),\s*Wins:\s*(\d+),\s*Losses:\s*(\d+),\s*Draws:\s*(\d+)', log, re.DOTALL)
+if m:
+    wins, losses, draws = int(m.group(2)), int(m.group(3)), int(m.group(4))
+total = wins + losses + draws
+if total == 0:
+    print("N/A")
+else:
+    score = max(0.001, min(0.999, (wins + 0.5*draws) / total))
+    print(f"{400*math.log10(score/(1-score)):+.1f}")
+PYEOF
+)
+    rm -f "$H2H_LOG"
+    echo "H2H SPRT: $H2H_SPRT_VERDICT | elo_diff: $H2H_ELO_DIFF" >&2
+elif [ "$VALID" = "true" ] && [ "$ELO_BEATS_BEST" = "false" ]; then
+    echo "Gauntlet ELO $ELO <= best $BEST_ELO_STORED_PRE — skipping H2H." >&2
+fi
+
+# Save best engine if: no prior best, or H2H confirmed H1
+if [ "$VALID" = "true" ] && { [ ! -f "$BEST_ENGINE_SAVE" ] || [ "$H2H_IS_NEW_BEST" = "true" ]; }; then
+    echo "Saving new best engine (ELO=$ELO)..." >&2
+    cp "$ENGINE_BIN" "$BEST_ENGINE_SAVE"
+    echo "$ELO" > "$BEST_ELO_FILE"
+fi
+
+BEST_ELO_STORED="N/A"
+if [ -f "$BEST_ELO_FILE" ]; then BEST_ELO_STORED=$(cat "$BEST_ELO_FILE"); fi
+
+printf "h2h_sprt_verdict: %s\n" "$H2H_SPRT_VERDICT"
+printf "h2h_elo_diff:     %s\n" "$H2H_ELO_DIFF"
+printf "h2h_is_new_best:  %s\n" "$H2H_IS_NEW_BEST"
+printf "best_elo_stored:  %s\n" "$BEST_ELO_STORED"

@@ -5,7 +5,6 @@ edition = "2021"
 
 [dependencies]
 chess = "3.2"
-nnue = { path = "/tmp/nnue-rs" }
 binread = { version = "2", features = ["const_generics"] }
 
 [profile.release]

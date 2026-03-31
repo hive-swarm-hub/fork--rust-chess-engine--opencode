@@ -1614,13 +1614,13 @@ impl RustAlphaBetaEngine {
     ) -> Option<i32> {
         match board.status() {
             BoardStatus::Checkmate => Some(-MATE_SCORE + ply as i32),
-            BoardStatus::Stalemate => Some((self.nodes & 2) as i32 - 1), // Draw noise: prevent systematic draw avoidance
+            BoardStatus::Stalemate => Some(-CONTEMPT), // Slight contempt: avoid stalemate
             BoardStatus::Ongoing => {
                 let rep_count = repetition.count(board_hash(board));
                 if rep_count >= 3 {
-                    Some((self.nodes & 2) as i32 - 1) // Draw noise: prevent systematic draw avoidance
+                    Some(-CONTEMPT) // Slight contempt: avoid repetition draws
                 } else if rep_count >= 2 && ply > 0 {
-                    Some((self.nodes & 2) as i32 - 1)
+                    Some(-CONTEMPT)
                 } else {
                     None
                 }

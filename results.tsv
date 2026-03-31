@@ -83,3 +83,6 @@ a841daf	3225.5	10	keep	IIR on NNUE base — 8W/2D/0L ZERO LOSSES! NEW ALL-TIME B
 9ea678df8d1be363383b6b119ae58756df75c08a	3198.8	N/A	keep	IIR gating, improving-aware RFP, refined futility (+65.2 ELO)
 9cc0d63	3148.8	210	discard	material scaling + soft RFP + ply4 improving fallback: -50 ELO
 d3bd31d	3192.6	200	discard	NMP eval>=beta condition: -6.2 ELO (within variance)
+603e0fd	3119.2	204	discard	TT eval override + draw noise randomization: -79.6 ELO
+SF18-IIR	3128.0	192	discard	SF18-style IIR (!allNode, depth>=6): -70.8 ELO. PV node IIR hurts
+b28cddb	3144.4	229	discard	Draw noise randomization only: -54.4 ELO. Inconsistency from -1/+1 alternation hurts

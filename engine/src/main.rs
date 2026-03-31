@@ -1280,7 +1280,8 @@ impl RustAlphaBetaEngine {
                         continue;
                     }
                 }
-                if move_count > late_move_pruning_limit(effective_depth, improving) {
+                // LMP only at non-PV (cut) nodes: PV nodes search all moves for best line accuracy
+                if cut_node && move_count > late_move_pruning_limit(effective_depth, improving) {
                     continue;
                 }
                 // SEE pruning for quiet moves

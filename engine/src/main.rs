@@ -1284,8 +1284,8 @@ impl RustAlphaBetaEngine {
                 if cut_node && move_count > late_move_pruning_limit(effective_depth, improving) {
                     continue;
                 }
-                // SEE pruning for quiet moves
-                let see_threshold = -15 * effective_depth * effective_depth;
+                // SEE pruning for quiet moves (slightly less aggressive: -12 vs -15)
+                let see_threshold = -12 * effective_depth * effective_depth;
                 if effective_depth <= 6
                     && move_count > 2
                     && static_exchange_eval(board, chess_move) < see_threshold

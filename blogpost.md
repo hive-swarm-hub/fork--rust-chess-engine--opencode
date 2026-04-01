@@ -1,10 +1,10 @@
 ---
 title: "Building a 3,200 ELO Chess Engine with Hive"
-author: "supersketchy & Hive Agent oc-1774861375"
-author_line: "supersketchy & Hive Agent oc-1774861375"
+author: "Pinak Paliwal & Hive Team"
+author_line: "Pinak Paliwal & Hive Team"
 date: "2026-03-31"
 citation_key: "hive2026chess"
-github: "https://github.com/supersketchy/rust-chess-engine"
+github: "https://github.com/hive-swarm-hub/fork--rust-chess-engine--opencode"
 ---
 <aside>
 
@@ -14,7 +14,7 @@ Hive improved a Rust chess engine from **2,324 to 3,208 ELO** (+884 points) in 2
 
 The gauntlet runs in 8-15 minutes with parallel SPRT. Full iteration (read code, write change, test) is 1-4 hours depending on complexity.
 
-👨‍💻 [Code](https://github.com/supersketchy/rust-chess-engine)
+👨‍💻 [Code](https://github.com/hive-swarm-hub/fork--rust-chess-engine--opencode)
 
 </aside>
 

@@ -91,3 +91,25 @@ NMP-cutNode	3163.3	191	discard	NMP at cut_node only (SF18/Reckless style): -35.5
 BNFP	3122.8	204	discard	Bad Noisy Futility Pruning (SEE<0 captures, eval+100d<=alpha): -76 ELO. Too aggressive
 double-SE-margin	3078.1	216	discard	Margin-based double SE (se_score < se_beta - 60 - 10d): -120.7 ELO. Way too aggressive
 fe0d4bb	3208.0	201	keep	LMP at cut_node only: PV nodes search all quiet moves (+9.2 ELO) NEW BEST!
+3 changes	3122.6	210	discard	NMP(2+(d+1)/4) + SEE(-12d^2) + LMP(2+d^2+d/2) bundle: -85.4 ELO
+cd2816f	3070.3	193	discard	hindsight extension (parent LMR>=2 + net eval<0): -137.7 ELO, over-extends
+67bf52b	3133.7	197	discard	LMR alpha-raises full count: -74.3 ELO
+4e5e979	3143.9	201	discard	LMR alpha-raises binary +1: -64.1 ELO
+c44a611	3127.4	195	discard	Check extension (gives check, depth<=6): -80.6 ELO
+94844f8	2596.4	191	discard	In-check extension (when in check +1 depth): -611.6 ELO, depth explosion
+47f81aa51be6a7536a9c66ec666c226abe26e52c	3168.1	215	discard	History aging (/2 each ID iter): -40 ELO, hurts ordering
+47f81aa51be6a7536a9c66ec666c226abe26e52c	3157.7	221	discard	TT value as static eval override: -50 ELO, depth-limited TT scores unreliable for pruning
+47f81aa51be6a7536a9c66ec666c226abe26e52c	3118.6	198	discard	NMP at cut_node only: -90 ELO, NMP important at all nodes for this engine
+47f81aa51be6a7536a9c66ec666c226abe26e52c	3176.0	201	discard	RFP blended return (2*beta+eval)/3: -32 ELO, slightly less accurate propagation
+47f81aa51be6a7536a9c66ec666c226abe26e52c	3111.1	211	discard	LMR +1 at cut_node: -97 ELO, too aggressive reduction makes cut_node searches too shallow
+47f81aa51be6a7536a9c66ec666c226abe26e52c	2711.0	263	discard	History-aware LMP (hist/10000 adjustment): -497 ELO catastrophic, negative history over-prunes
+47f81aa51be6a7536a9c66ec666c226abe26e52c	3197.0	210	discard	History-aware LMP v2 (±1 clamp): -11 ELO, within variance but not beating baseline
+47f81aa51be6a7536a9c66ec666c226abe26e52c	3108.2	210	discard	Recapture extension (PV+TT+recapture): -100 ELO, node inflation hurts at fixed TC
+47f81aa51be6a7536a9c66ec666c226abe26e52c	3079.7	194	discard	1-ply continuation history (move ordering + updates): -128 ELO, contextual noise overrides good global history
+47f81aa51be6a7536a9c66ec666c226abe26e52c	3124.7	221	discard	Futility pruning cut_node only: -83 ELO, quality-based prunes still valid at PV nodes unlike LMP
+47f81aa51be6a7536a9c66ec666c226abe26e52c	3141.2	196	discard	SEE quiet pruning cut_node only: -67 ELO
+47f81aa51be6a7536a9c66ec666c226abe26e52c	3116.7	232	discard	NMP less aggressive reduction (2+(d+1)/4): -91 ELO, current 3+d/4 is optimal
+47f81aa51be6a7536a9c66ec666c226abe26e52c	3064.5	190	discard	ProbCut QS pre-screen filter: -143 ELO, QS misses quiet continuations needed for probcut
+47f81aa51be6a7536a9c66ec666c226abe26e52c	3145.4	196	discard	LMR divisor 1.70 (less aggressive): -63 ELO
+47f81aa51be6a7536a9c66ec666c226abe26e52c	3154.7	N/A	discard	LMR divisor 1.40 (more aggressive): -53 ELO, 1.58 is optimal
+47f81aa51be6a7536a9c66ec666c226abe26e52c	3157.6	N/A	discard	LMR from move 4 (was 3): -50 ELO, move 3 benefits from reduction

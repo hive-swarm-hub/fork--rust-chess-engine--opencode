@@ -240,6 +240,8 @@ const PAWN_CACHE_MASK: usize = PAWN_CACHE_SIZE - 1;
 const HISTORY_LIMIT: i32 = 32_000;
 const CAPTURE_HISTORY_PIECES: usize = 6;
 const CAPTURE_HISTORY_LIMIT: i32 = 16_000;
+const CORR_SIZE: usize = 1 << 16; // 65536 entries per color
+const CORR_MAX: i32 = 14605;
 const MAX_TIME_SEARCH_DEPTH: i32 = 64;
 const PHASE_TOTAL: i32 = 24;
 const SEE_PRUNE_MARGIN: i32 = 80;
@@ -502,6 +504,7 @@ struct TTEntry {
     key: u64,
     depth: i32,
     score: i32,
+    raw_eval: i32, // NNUE score before correction; i32::MIN = not stored
     flag: u8,
     best_move: Option<ChessMove>,
 }
@@ -512,6 +515,7 @@ impl Default for TTEntry {
             key: 0,
             depth: 0,
             score: 0,
+            raw_eval: i32::MIN,
             flag: 0,
             best_move: None,
         }
@@ -625,10 +629,15 @@ struct RustAlphaBetaEngine {
     capture_history: Vec<i16>,
     countermove: Vec<Option<ChessMove>>, // indexed by previous move's move_key
     move_stack: Vec<Option<ChessMove>>,  // move played at each ply for countermove tracking
-    eval_stack: Vec<i32>,                // static eval at each ply for improving detection
+    eval_stack: Vec<i32>,                // corrected static eval at each ply for improving detection
     nnue_stack: Vec<reckless_nnue::Accumulator>,
     eval_cache: Vec<EvalCacheEntry>,
     pawn_cache: Vec<PawnCacheEntry>,
+    // Correction history: learn systematic eval bias per position structure
+    pawn_corrhist: Vec<i32>,      // [2 * CORR_SIZE] indexed by [stm * CORR_SIZE + (hash & mask)]
+    minor_corrhist: Vec<i32>,     // keyed by knight+bishop hash
+    nonpawn_w_corrhist: Vec<i32>, // keyed by white non-pawn hash
+    nonpawn_b_corrhist: Vec<i32>, // keyed by black non-pawn hash
     deadline: Option<Instant>,
     stopped: bool,
     opening_book: HashMap<u64, &'static str>,
@@ -651,6 +660,10 @@ impl RustAlphaBetaEngine {
             nnue_stack: vec![reckless_nnue::Accumulator::new(); KILLER_PLY_CAPACITY],
             eval_cache: vec![EvalCacheEntry::default(); EVAL_CACHE_SIZE],
             pawn_cache: vec![PawnCacheEntry::default(); PAWN_CACHE_SIZE],
+            pawn_corrhist: vec![0; 2 * CORR_SIZE],
+            minor_corrhist: vec![0; 2 * CORR_SIZE],
+            nonpawn_w_corrhist: vec![0; 2 * CORR_SIZE],
+            nonpawn_b_corrhist: vec![0; 2 * CORR_SIZE],
             deadline: None,
             stopped: false,
             opening_book: build_opening_book(),
@@ -1034,6 +1047,10 @@ impl RustAlphaBetaEngine {
             nnue_stack: self.nnue_stack.clone(),
             eval_cache: self.eval_cache.clone(),
             pawn_cache: self.pawn_cache.clone(),
+            pawn_corrhist: self.pawn_corrhist.clone(),
+            minor_corrhist: self.minor_corrhist.clone(),
+            nonpawn_w_corrhist: self.nonpawn_w_corrhist.clone(),
+            nonpawn_b_corrhist: self.nonpawn_b_corrhist.clone(),
             deadline: self.deadline,
             stopped: false,
             opening_book: HashMap::new(), // Workers don't need the opening book
@@ -1075,6 +1092,7 @@ impl RustAlphaBetaEngine {
                 key,
                 depth,
                 score,
+                raw_eval: i32::MIN, // root result: no raw_eval computed
                 flag,
                 best_move: Some(best_move),
             };
@@ -1169,13 +1187,35 @@ impl RustAlphaBetaEngine {
             effective_depth -= 1;
         }
 
-        let static_eval = if !in_check_now {
-            Some(self.evaluate(board, ply))
+        // Get raw NNUE eval (reuse from TT if available to avoid redundant NNUE calls)
+        let raw_eval: i32 = if !in_check_now {
+            if let Some(entry) = tt_entry {
+                if entry.raw_eval != i32::MIN {
+                    entry.raw_eval
+                } else {
+                    self.evaluate(board, ply)
+                }
+            } else {
+                self.evaluate(board, ply)
+            }
+        } else {
+            i32::MIN
+        };
+
+        // Apply correction history: adjust static eval to correct systematic bias.
+        // Clamp to ±150cp to prevent catastrophic eval distortion when NNUE is miscalibrated.
+        let correction = if raw_eval != i32::MIN {
+            self.eval_correction(board).clamp(-150, 150)
+        } else {
+            0
+        };
+        let static_eval = if raw_eval != i32::MIN {
+            Some((raw_eval + correction).clamp(-900_000, 900_000))
         } else {
             None
         };
 
-        // Store static eval for improving detection
+        // Store corrected static eval for improving detection
         self.ensure_ply_capacity(ply + 2);
         self.eval_stack[ply] = static_eval.unwrap_or(0);
         let improving = !in_check_now
@@ -1480,6 +1520,7 @@ impl RustAlphaBetaEngine {
             key: tt_key,
             depth: effective_depth,
             score: best_score,
+            raw_eval,
             flag,
             best_move,
         };
@@ -1487,6 +1528,23 @@ impl RustAlphaBetaEngine {
         if existing.key == 0 || new_entry.depth >= existing.depth || existing.key == tt_key {
             self.tt[tt_idx] = new_entry;
         }
+
+        // Update correction history: learn the difference between search result and static eval
+        if raw_eval != i32::MIN && best_score.abs() < MATE_SCORE - 1_000 {
+            let weight = effective_depth.clamp(1, 8);
+            let diff = best_score - raw_eval;
+            let bonus = (weight * diff * 142 / 128).clamp(-4923, 3072);
+            let stm = board.side_to_move();
+            let pawn_h = compute_pawn_hash(board);
+            let minor_h = compute_minor_hash(board);
+            let npw_h = compute_nonpawn_hash(board, Color::White);
+            let npb_h = compute_nonpawn_hash(board, Color::Black);
+            corr_update(&mut self.pawn_corrhist, stm, pawn_h, bonus);
+            corr_update(&mut self.minor_corrhist, stm, minor_h, bonus);
+            corr_update(&mut self.nonpawn_w_corrhist, stm, npw_h, bonus);
+            corr_update(&mut self.nonpawn_b_corrhist, stm, npb_h, bonus);
+        }
+
         Some(best_score)
     }
 
@@ -1757,6 +1815,21 @@ impl RustAlphaBetaEngine {
         *history = updated.clamp(-CAPTURE_HISTORY_LIMIT, CAPTURE_HISTORY_LIMIT) as i16;
     }
 
+    /// Compute the total correction from all four correction history tables.
+    /// Divides by 55 (vs reckless's 77 which has 6 terms; we have 4 so scale accordingly).
+    fn eval_correction(&self, board: &Board) -> i32 {
+        let stm = board.side_to_move();
+        let pawn_h = compute_pawn_hash(board);
+        let minor_h = compute_minor_hash(board);
+        let npw_h = compute_nonpawn_hash(board, Color::White);
+        let npb_h = compute_nonpawn_hash(board, Color::Black);
+        (corr_get(&self.pawn_corrhist, stm, pawn_h)
+            + corr_get(&self.minor_corrhist, stm, minor_h)
+            + corr_get(&self.nonpawn_w_corrhist, stm, npw_h)
+            + corr_get(&self.nonpawn_b_corrhist, stm, npb_h))
+            / 55
+    }
+
     fn ensure_ply_capacity(&mut self, size: usize) {
         if self.killer_moves.len() < size {
             self.killer_moves.resize(size, [None, None]);
@@ -1813,6 +1886,84 @@ impl RustAlphaBetaEngine {
 
 fn board_hash(board: &Board) -> u64 {
     board.get_hash()
+}
+
+// --- Correction history helpers ---
+
+/// Pre-computed random hash keys for piece-square combinations.
+/// Layout: [color(2)][piece(6)][square(64)] = 768 entries.
+/// Generated with a fixed seed (Knuth multiplicative hash) for reproducibility.
+static PIECE_HASH_KEYS: std::sync::LazyLock<[[u64; 64]; 12]> =
+    std::sync::LazyLock::new(|| {
+        let mut keys = [[0u64; 64]; 12];
+        let mut seed: u64 = 0x9e37_79b9_7f4a_7c15;
+        for slot in keys.iter_mut().flatten() {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            *slot = seed;
+        }
+        keys
+    });
+
+fn piece_hash_key(piece: Piece, square: Square, color: Color) -> u64 {
+    let piece_idx = piece.to_index(); // 0=Pawn,1=Knight,2=Bishop,3=Rook,4=Queen,5=King
+    let color_idx = if color == Color::White { 0 } else { 1 };
+    PIECE_HASH_KEYS[color_idx * 6 + piece_idx][square.to_index()]
+}
+
+/// Pawn-structure hash (board.get_pawn_hash() always returns 0 in chess-3.2.0).
+fn compute_pawn_hash(board: &Board) -> u64 {
+    let mut h = 0u64;
+    for sq in piece_bb(board, Color::White, Piece::Pawn) {
+        h ^= piece_hash_key(Piece::Pawn, sq, Color::White);
+    }
+    for sq in piece_bb(board, Color::Black, Piece::Pawn) {
+        h ^= piece_hash_key(Piece::Pawn, sq, Color::Black);
+    }
+    h
+}
+
+/// Minor piece (knight + bishop) hash for correction history.
+fn compute_minor_hash(board: &Board) -> u64 {
+    let mut h = 0u64;
+    for color in [Color::White, Color::Black] {
+        for sq in piece_bb(board, color, Piece::Knight) {
+            h ^= piece_hash_key(Piece::Knight, sq, color);
+        }
+        for sq in piece_bb(board, color, Piece::Bishop) {
+            h ^= piece_hash_key(Piece::Bishop, sq, color);
+        }
+    }
+    h
+}
+
+/// Non-pawn piece hash for one color (used for two separate correction tables).
+fn compute_nonpawn_hash(board: &Board, color: Color) -> u64 {
+    let mut h = 0u64;
+    for piece in [Piece::Knight, Piece::Bishop, Piece::Rook, Piece::Queen, Piece::King] {
+        for sq in piece_bb(board, color, piece) {
+            h ^= piece_hash_key(piece, sq, color);
+        }
+    }
+    h
+}
+
+#[inline(always)]
+fn corr_get(table: &[i32], stm: Color, key: u64) -> i32 {
+    let stm_idx = if stm == Color::White { 0 } else { 1 };
+    table[stm_idx * CORR_SIZE + (key as usize & (CORR_SIZE - 1))]
+}
+
+fn corr_update(table: &mut [i32], stm: Color, key: u64, bonus: i32) {
+    let stm_idx = if stm == Color::White { 0 } else { 1 };
+    let idx = stm_idx * CORR_SIZE + (key as usize & (CORR_SIZE - 1));
+    let current = table[idx];
+    let clamped = bonus.clamp(-CORR_MAX, CORR_MAX);
+    // Stockfish-style: entry += bonus - abs(bonus) * entry / MAX
+    // Using signed current (not abs) so positive bonuses can recover negative values
+    table[idx] = (current + clamped - clamped.abs() * current / CORR_MAX)
+        .clamp(-CORR_MAX, CORR_MAX);
 }
 
 fn available_root_threads() -> usize {

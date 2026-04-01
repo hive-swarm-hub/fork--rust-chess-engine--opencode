@@ -36,7 +36,7 @@ TC="120+1"
 HASH=128
 THREADS=1
 CONCURRENCY=200
-ROUNDS=5
+ROUNDS=15
 SYZYGY_PATH=""
 
 while getopts "c:r:t:o:h" opt; do
@@ -102,7 +102,7 @@ CMD+=(-engine "cmd=$HIVECHESS" "name=hivechess"
 for bin in "${OPPONENTS[@]}"; do
     name="$(basename "$bin")"
     CMD+=(-engine "cmd=$bin" "name=$name"
-          "option.Hash=$HASH" "option.Threads=$THREADS")
+          "option.Hash=$HASH")
     [[ -n "$SYZYGY_PATH" ]] && CMD+=("option.SyzygyPath=$SYZYGY_PATH")
 done
 
@@ -125,5 +125,5 @@ echo ""
 echo ""
 echo "================================================================"
 echo "  Done. PGN saved to: $OUTPUT_PGN"
-echo "  Run: python3 tournament/calculate_elo.py tournament/results.pgn"
+echo "  Run: python3 $SCRIPT_DIR/calculate_elo.py $OUTPUT_PGN"
 echo "================================================================"

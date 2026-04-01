@@ -9,7 +9,10 @@ fn send(msg: &str) {
     io::stdout().flush().ok();
 }
 
+mod reckless_nnue;
+
 fn main() {
+    reckless_nnue::load_parameters();
     let stdin = io::stdin();
     let mut engine = RustAlphaBetaEngine::new(64);
     let mut root_fen = String::from("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
@@ -30,7 +33,29 @@ fn main() {
             "uci" => {
                 send("id name HiveChess 0.3");
                 send("id author HiveAgent");
+                send("option name Hash type spin default 64 min 1 max 65536");
+                send(&format!("option name Threads type spin default 1 min 1 max {}", available_root_threads()));
                 send("uciok");
+            }
+            "setoption" => {
+                match tokens.as_slice() {
+                    [_, "name", "Hash", "value", v] => {
+                        if let Ok(mb) = v.parse::<usize>() {
+                            let bytes = mb * 1024 * 1024;
+                            let entry_size = std::mem::size_of::<TTEntry>().max(1);
+                            let count = (bytes / entry_size).next_power_of_two() >> 1;
+                            let count = count.max(1);
+                            engine.tt = vec![TTEntry::default(); count];
+                            engine.tt_mask = count - 1;
+                        }
+                    }
+                    [_, "name", "Threads", "value", v] => {
+                        if let Ok(n) = v.parse::<usize>() {
+                            engine.threads = n.max(1).min(available_root_threads());
+                        }
+                    }
+                    _ => {}
+                }
             }
             "isready" => send("readyok"),
             "ucinewgame" => {
@@ -185,66 +210,15 @@ use std::sync::OnceLock;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use binread::BinRead;
 use chess::{
     get_bishop_moves, get_king_moves, get_knight_moves, get_pawn_attacks, get_rook_moves, BitBoard,
     Board, BoardStatus, ChessMove, Color, File, MoveGen, Piece, Rank, Square,
 };
-use nnue::stockfish::halfkp::{scale_nn_to_centipawns, SfHalfKpFullModel};
-
-// NNUE weights (Stockfish HalfKP 256x2-32-32-1)
-const NNUE_WEIGHTS: &[u8] = include_bytes!("nn.nnue");
-static NNUE_MODEL: OnceLock<SfHalfKpFullModel> = OnceLock::new();
-
-fn load_nnue() -> SfHalfKpFullModel {
-    let mut cursor = std::io::Cursor::new(NNUE_WEIGHTS);
-    SfHalfKpFullModel::read(&mut cursor).expect("NNUE load failed")
-}
 
 fn nnue_evaluate(board: &Board) -> i32 {
-    let full = NNUE_MODEL.get_or_init(load_nnue);
-    let model = &full.model;
-    let wk_sq = board.king_square(Color::White);
-    let bk_sq = board.king_square(Color::Black);
-    let wk = nnue::Square::from_index(wk_sq.to_index());
-    let bk = nnue::Square::from_index(bk_sq.to_index());
-    let mut state = model.new_state(wk, bk);
-    for &chess_color in &[Color::White, Color::Black] {
-        let nc = if chess_color == Color::White {
-            nnue::Color::White
-        } else {
-            nnue::Color::Black
-        };
-        for &chess_piece in &[
-            Piece::Pawn,
-            Piece::Knight,
-            Piece::Bishop,
-            Piece::Rook,
-            Piece::Queen,
-        ] {
-            let np = match chess_piece {
-                Piece::Pawn => nnue::Piece::Pawn,
-                Piece::Knight => nnue::Piece::Knight,
-                Piece::Bishop => nnue::Piece::Bishop,
-                Piece::Rook => nnue::Piece::Rook,
-                Piece::Queen => nnue::Piece::Queen,
-                _ => unreachable!(),
-            };
-            let bb = board.pieces(chess_piece) & board.color_combined(chess_color);
-            for sq in bb {
-                let ns = nnue::Square::from_index(sq.to_index());
-                for &acc_color in &nnue::Color::ALL {
-                    state.add(acc_color, np, nc, ns);
-                }
-            }
-        }
-    }
-    let stm = if board.side_to_move() == Color::White {
-        nnue::Color::White
-    } else {
-        nnue::Color::Black
-    };
-    scale_nn_to_centipawns(state.activate(stm)[0])
+    let mut acc = reckless_nnue::full_refresh_psq(board);
+    reckless_nnue::refresh_threats(board, &mut acc);
+    reckless_nnue::evaluate(board, &acc)
 }
 
 const INFINITY: i32 = 1_000_000;
@@ -266,6 +240,8 @@ const PAWN_CACHE_MASK: usize = PAWN_CACHE_SIZE - 1;
 const HISTORY_LIMIT: i32 = 32_000;
 const CAPTURE_HISTORY_PIECES: usize = 6;
 const CAPTURE_HISTORY_LIMIT: i32 = 16_000;
+const CORR_SIZE: usize = 1 << 16; // 65536 entries per color
+const CORR_MAX: i32 = 14605;
 const MAX_TIME_SEARCH_DEPTH: i32 = 64;
 const PHASE_TOTAL: i32 = 24;
 const SEE_PRUNE_MARGIN: i32 = 80;
@@ -313,6 +289,19 @@ const RAZOR_MARGIN: [i32; 4] = [0, 230, 360, 500];
 
 // Contempt: 0 = accept draws (better vs strong opponents at anchor 2800)
 const CONTEMPT: i32 = 0;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chess::Board;
+
+    #[test]
+    fn test_botbot_startpos() {
+        let board = Board::default();
+        let score = nnue_evaluate(&board);
+        println!("Botbot startpos score: {}", score);
+    }
+}
 
 /// Build the opening book: maps position hash -> best move UCI string.
 /// These are strong opening moves from theory, covering common openings.
@@ -501,8 +490,8 @@ static LMR_TABLE: [[i32; 64]; 64] = {
             };
             let ln_d = log2_d * ln2;
             let ln_m = log2_m * ln2;
-            let r = (0.75 + ln_d * ln_m / 2.25) as i32;
-            table[depth][moves] = if r < 1 { 1 } else { r };
+            let r = (0.50 + ln_d * ln_m / 1.58) as i32;
+            table[depth][moves] = if r < 0 { 0 } else { r };
             moves += 1;
         }
         depth += 1;
@@ -515,6 +504,7 @@ struct TTEntry {
     key: u64,
     depth: i32,
     score: i32,
+    raw_eval: i32, // NNUE score before correction; i32::MIN = not stored
     flag: u8,
     best_move: Option<ChessMove>,
 }
@@ -525,6 +515,7 @@ impl Default for TTEntry {
             key: 0,
             depth: 0,
             score: 0,
+            raw_eval: i32::MIN,
             flag: 0,
             best_move: None,
         }
@@ -632,14 +623,21 @@ struct RustAlphaBetaEngine {
     threads: usize,
     nodes: u64,
     tt: Vec<TTEntry>,
+    tt_mask: usize,
     killer_moves: Vec<[Option<ChessMove>; 2]>,
     history_heuristic: Vec<i32>,
     capture_history: Vec<i16>,
     countermove: Vec<Option<ChessMove>>, // indexed by previous move's move_key
     move_stack: Vec<Option<ChessMove>>,  // move played at each ply for countermove tracking
-    eval_stack: Vec<i32>,                // static eval at each ply for improving detection
+    eval_stack: Vec<i32>,                // corrected static eval at each ply for improving detection
+    nnue_stack: Vec<reckless_nnue::Accumulator>,
     eval_cache: Vec<EvalCacheEntry>,
     pawn_cache: Vec<PawnCacheEntry>,
+    // Correction history: learn systematic eval bias per position structure
+    pawn_corrhist: Vec<i32>,      // [2 * CORR_SIZE] indexed by [stm * CORR_SIZE + (hash & mask)]
+    minor_corrhist: Vec<i32>,     // keyed by knight+bishop hash
+    nonpawn_w_corrhist: Vec<i32>, // keyed by white non-pawn hash
+    nonpawn_b_corrhist: Vec<i32>, // keyed by black non-pawn hash
     deadline: Option<Instant>,
     stopped: bool,
     opening_book: HashMap<u64, &'static str>,
@@ -652,14 +650,20 @@ impl RustAlphaBetaEngine {
             threads: available_root_threads(),
             nodes: 0,
             tt: vec![TTEntry::default(); TT_SIZE],
+            tt_mask: TT_SIZE - 1,
             killer_moves: vec![[None, None]; KILLER_PLY_CAPACITY],
             history_heuristic: vec![0; HISTORY_SIZE],
             capture_history: vec![0; HISTORY_SIZE * CAPTURE_HISTORY_PIECES],
             countermove: vec![None; HISTORY_SIZE],
             move_stack: vec![None; KILLER_PLY_CAPACITY],
             eval_stack: vec![0; KILLER_PLY_CAPACITY],
+            nnue_stack: vec![reckless_nnue::Accumulator::new(); KILLER_PLY_CAPACITY],
             eval_cache: vec![EvalCacheEntry::default(); EVAL_CACHE_SIZE],
             pawn_cache: vec![PawnCacheEntry::default(); PAWN_CACHE_SIZE],
+            pawn_corrhist: vec![0; 2 * CORR_SIZE],
+            minor_corrhist: vec![0; 2 * CORR_SIZE],
+            nonpawn_w_corrhist: vec![0; 2 * CORR_SIZE],
+            nonpawn_b_corrhist: vec![0; 2 * CORR_SIZE],
             deadline: None,
             stopped: false,
             opening_book: build_opening_book(),
@@ -723,6 +727,10 @@ impl RustAlphaBetaEngine {
         self.stopped = false;
         let search_start = Instant::now();
         self.deadline = time_budget.map(|budget| search_start + budget);
+
+        // Initialize NNUE root state
+        self.ensure_ply_capacity(16);
+        self.nnue_stack[0] = reckless_nnue::full_refresh_psq(&board);
 
         let mut best_move: Option<ChessMove> = None;
         let mut best_score = 0;
@@ -823,12 +831,14 @@ impl RustAlphaBetaEngine {
             };
 
             if alpha != -INFINITY && score <= alpha {
-                delta = delta * 3 / 2;
+                beta = (3 * alpha + beta) / 4;
+                delta = delta * 5 / 4;
                 alpha = (score - delta).max(-INFINITY);
                 continue;
             }
             if beta != INFINITY && score >= beta {
-                delta = delta * 3 / 2;
+                alpha = (alpha + beta) / 2;
+                delta = delta * 5 / 4;
                 beta = (score + delta).min(INFINITY);
                 continue;
             }
@@ -847,7 +857,7 @@ impl RustAlphaBetaEngine {
         repetition: &mut RepetitionTracker,
     ) -> Option<(i32, ChessMove)> {
         let tt_key = board_hash(board);
-        let tt_idx = tt_key as usize & TT_MASK;
+        let tt_idx = tt_key as usize & self.tt_mask;
         let tt_move = {
             let entry = &self.tt[tt_idx];
             if entry.key == tt_key {
@@ -863,8 +873,9 @@ impl RustAlphaBetaEngine {
         root_moves.sort_unstable_by(|left, right| right.score.cmp(&left.score));
 
         if !self.should_parallelize_root(depth, root_moves.len()) {
+            self.nnue_stack[0] = reckless_nnue::full_refresh_psq(board);
             let score = self.negamax(board, depth, alpha, beta, 0, repetition)?;
-            let tt_idx2 = board_hash(board) as usize & TT_MASK;
+            let tt_idx2 = board_hash(board) as usize & self.tt_mask;
             let best_move = {
                 let entry = &self.tt[tt_idx2];
                 if entry.key == board_hash(board) {
@@ -893,6 +904,7 @@ impl RustAlphaBetaEngine {
         let first_child = board.make_move_new(first_move);
         let first_hash = board_hash(&first_child);
         repetition.push(first_hash);
+        self.nnue_stack[1] = reckless_nnue::update(board, first_move, &self.nnue_stack[0]);
         let mut best_score =
             -self.negamax(&first_child, depth - 1, -beta, -alpha, 1, repetition)?;
         repetition.pop(first_hash);
@@ -976,6 +988,7 @@ impl RustAlphaBetaEngine {
             let child_hash = board_hash(&child);
             let mut local_repetition = repetition.clone();
             local_repetition.push(child_hash);
+            self.nnue_stack[1] = reckless_nnue::update(&board, chess_move, &self.nnue_stack[0]);
 
             let mut score = -self.negamax(
                 &child,
@@ -1024,14 +1037,20 @@ impl RustAlphaBetaEngine {
             threads: 1,
             nodes: 0,
             tt: self.tt.clone(),
+            tt_mask: self.tt_mask,
             killer_moves: self.killer_moves.clone(),
             history_heuristic: self.history_heuristic.clone(),
             capture_history: self.capture_history.clone(),
             countermove: self.countermove.clone(),
             move_stack: self.move_stack.clone(),
             eval_stack: self.eval_stack.clone(),
+            nnue_stack: self.nnue_stack.clone(),
             eval_cache: self.eval_cache.clone(),
             pawn_cache: self.pawn_cache.clone(),
+            pawn_corrhist: self.pawn_corrhist.clone(),
+            minor_corrhist: self.minor_corrhist.clone(),
+            nonpawn_w_corrhist: self.nonpawn_w_corrhist.clone(),
+            nonpawn_b_corrhist: self.nonpawn_b_corrhist.clone(),
             deadline: self.deadline,
             stopped: false,
             opening_book: HashMap::new(), // Workers don't need the opening book
@@ -1066,13 +1085,14 @@ impl RustAlphaBetaEngine {
             EXACT
         };
         let key = board_hash(board);
-        let idx = key as usize & TT_MASK;
+        let idx = key as usize & self.tt_mask;
         let existing = &self.tt[idx];
         if existing.key == 0 || depth >= existing.depth || existing.key == key {
             self.tt[idx] = TTEntry {
                 key,
                 depth,
                 score,
+                raw_eval: i32::MIN, // root result: no raw_eval computed
                 flag,
                 best_move: Some(best_move),
             };
@@ -1099,7 +1119,7 @@ impl RustAlphaBetaEngine {
 
         // Max ply limit to prevent search explosions
         if ply >= 96 {
-            return Some(self.evaluate(board));
+            return Some(self.evaluate(board, ply));
         }
 
         // Mate distance pruning
@@ -1122,8 +1142,6 @@ impl RustAlphaBetaEngine {
 
         let in_check_now = in_check(board);
         let mut effective_depth = depth;
-        // Approximate Stockfish's cut-node gating with zero-window searches.
-        let cut_node = beta == alpha + 1;
         // Cap check extension to prevent infinite check sequences
         if in_check_now && ply < 80 {
             effective_depth += 1;
@@ -1136,7 +1154,7 @@ impl RustAlphaBetaEngine {
         let alpha_original = alpha;
         let beta_original = beta;
         let tt_key = board_hash(board);
-        let tt_idx = tt_key as usize & TT_MASK;
+        let tt_idx = tt_key as usize & self.tt_mask;
         let tt_entry = {
             let entry = self.tt[tt_idx];
             if entry.key == tt_key {
@@ -1162,18 +1180,42 @@ impl RustAlphaBetaEngine {
         }
 
         // IIR: reduce depth by 1 when no TT move (saves expensive NNUE IID sub-searches)
-        // Also gate on cut_node and prior_reduction
-        if tt_move.is_none() && effective_depth >= 6 && !in_check_now && cut_node {
+        let cut_node = beta == alpha + 1;
+
+        // IIR: reduce depth by 1 when no TT move
+        if tt_move.is_none() && effective_depth >= 4 && !in_check_now && cut_node {
             effective_depth -= 1;
         }
 
-        let static_eval = if !in_check_now {
-            Some(self.evaluate(board))
+        // Get raw NNUE eval (reuse from TT if available to avoid redundant NNUE calls)
+        let raw_eval: i32 = if !in_check_now {
+            if let Some(entry) = tt_entry {
+                if entry.raw_eval != i32::MIN {
+                    entry.raw_eval
+                } else {
+                    self.evaluate(board, ply)
+                }
+            } else {
+                self.evaluate(board, ply)
+            }
+        } else {
+            i32::MIN
+        };
+
+        // Apply correction history: adjust static eval to correct systematic bias.
+        // Clamp to ±150cp to prevent catastrophic eval distortion when NNUE is miscalibrated.
+        let correction = if raw_eval != i32::MIN {
+            self.eval_correction(board).clamp(-150, 150)
+        } else {
+            0
+        };
+        let static_eval = if raw_eval != i32::MIN {
+            Some((raw_eval + correction).clamp(-900_000, 900_000))
         } else {
             None
         };
 
-        // Store static eval for improving detection
+        // Store corrected static eval for improving detection
         self.ensure_ply_capacity(ply + 2);
         self.eval_stack[ply] = static_eval.unwrap_or(0);
         let improving = !in_check_now
@@ -1181,10 +1223,8 @@ impl RustAlphaBetaEngine {
             && static_eval.map_or(false, |e| e > self.eval_stack[ply - 2]);
 
         if let Some(eval) = static_eval {
-            if effective_depth <= 4
-                && eval >= beta + REVERSE_FUTILITY_MARGIN[effective_depth as usize]
-                && beta < MATE_SCORE - 1_000
-            {
+            let rfp_margin = 75 * effective_depth - (50 * improving as i32);
+            if effective_depth <= 6 && eval >= beta + rfp_margin && beta < MATE_SCORE - 1_000 {
                 return Some(eval);
             }
             if effective_depth <= 3
@@ -1197,14 +1237,19 @@ impl RustAlphaBetaEngine {
 
         if effective_depth >= 3
             && !in_check_now
-            && cut_node
             && has_non_pawn_material(board, board.side_to_move())
             && beta < MATE_SCORE - 1_000
         {
             if let Some(null_board) = board.null_move() {
-                let reduction = 2 + effective_depth / 3;
+                let mut reduction = 3 + effective_depth / 4;
+                if let Some(eval) = static_eval {
+                    let margin = (eval - beta) / 200;
+                    reduction += margin.clamp(0, 3);
+                }
+
                 let null_hash = board_hash(&null_board);
                 repetition.push(null_hash);
+                self.nnue_stack[ply + 1] = self.nnue_stack[ply];
                 let search = self.negamax(
                     &null_board,
                     effective_depth - 1 - reduction,
@@ -1236,6 +1281,8 @@ impl RustAlphaBetaEngine {
                 let child = board.make_move_new(pc_move);
                 let child_hash = board_hash(&child);
                 repetition.push(child_hash);
+                self.nnue_stack[ply + 1] =
+                    reckless_nnue::update(board, pc_move, &self.nnue_stack[ply]);
                 let search = self.negamax(
                     &child,
                     probcut_depth,
@@ -1290,20 +1337,23 @@ impl RustAlphaBetaEngine {
 
             if is_quiet && !in_check_now && !gives_check_move {
                 if let Some(eval) = static_eval {
-                    if effective_depth <= 4
+                    let history = self.history_heuristic[move_key(chess_move) as usize];
+                    if effective_depth <= 8
                         && move_count > 1
-                        && eval + FUTILITY_MARGIN[effective_depth as usize] <= alpha
+                        && eval + 90 * effective_depth + history / 128 <= alpha
                     {
                         continue;
                     }
                 }
-                if move_count > late_move_pruning_limit(effective_depth) {
+                // LMP only at non-PV (cut) nodes: PV nodes search all moves for best line accuracy
+                if cut_node && move_count > late_move_pruning_limit(effective_depth, improving) {
                     continue;
                 }
-                // SEE pruning for quiet moves at low depth
-                if effective_depth <= 4
-                    && move_count > 3
-                    && static_exchange_eval(board, chess_move) < -50 * effective_depth
+                // SEE pruning for quiet moves
+                let see_threshold = -15 * effective_depth * effective_depth;
+                if effective_depth <= 6
+                    && move_count > 2
+                    && static_exchange_eval(board, chess_move) < see_threshold
                 {
                     continue;
                 }
@@ -1330,7 +1380,10 @@ impl RustAlphaBetaEngine {
                 );
                 if let Some(se_score) = excluded_score {
                     if se_score < se_beta {
-                        extension = 1; // TT move is singular, extend it
+                        extension = 1; // TT move is singular
+                        if in_check(&child) {
+                            extension = 2; // Double extension for singular checks
+                        }
                     }
                 }
             }
@@ -1338,6 +1391,8 @@ impl RustAlphaBetaEngine {
             // Track move at this ply for countermove recording
             self.ensure_ply_capacity(ply + 2);
             self.move_stack[ply] = Some(chess_move);
+            self.nnue_stack[ply + 1] =
+                reckless_nnue::update(board, chess_move, &self.nnue_stack[ply]);
 
             repetition.push(child_hash);
 
@@ -1354,31 +1409,28 @@ impl RustAlphaBetaEngine {
                 }
 
                 let mut search_depth = effective_depth - 1;
-                if effective_depth >= 4
-                    && move_count > 3
+                if effective_depth >= 3
+                    && move_count > 2
                     && is_quiet
                     && !in_check_now
                     && !gives_check_move
                 {
                     let mut reduction = late_move_reduction(effective_depth, move_count);
-                    // Reduce less for countermoves and killers
+                    // Reduce less for killers
                     let mk = move_key(chess_move) as usize;
                     if self.killer_moves.get(ply).map_or(false, |k| {
                         k[0] == Some(chess_move) || k[1] == Some(chess_move)
                     }) {
-                        reduction = (reduction - 1).max(0);
+                        reduction -= 1;
                     }
                     // Reduce more if not improving
                     if !improving {
                         reduction += 1;
                     }
-                    // Reduce more for moves with bad history
+                    // History adjustment
                     let hist = self.history_heuristic[mk];
-                    if hist < -2000 {
-                        reduction += 1;
-                    } else if hist > 8000 {
-                        reduction = (reduction - 1).max(0);
-                    }
+                    reduction -= hist / 10000;
+
                     search_depth = (search_depth - reduction).max(0);
                 }
 
@@ -1468,6 +1520,7 @@ impl RustAlphaBetaEngine {
             key: tt_key,
             depth: effective_depth,
             score: best_score,
+            raw_eval,
             flag,
             best_move,
         };
@@ -1475,6 +1528,23 @@ impl RustAlphaBetaEngine {
         if existing.key == 0 || new_entry.depth >= existing.depth || existing.key == tt_key {
             self.tt[tt_idx] = new_entry;
         }
+
+        // Update correction history: learn the difference between search result and static eval
+        if raw_eval != i32::MIN && best_score.abs() < MATE_SCORE - 1_000 {
+            let weight = effective_depth.clamp(1, 8);
+            let diff = best_score - raw_eval;
+            let bonus = (weight * diff * 142 / 128).clamp(-4923, 3072);
+            let stm = board.side_to_move();
+            let pawn_h = compute_pawn_hash(board);
+            let minor_h = compute_minor_hash(board);
+            let npw_h = compute_nonpawn_hash(board, Color::White);
+            let npb_h = compute_nonpawn_hash(board, Color::Black);
+            corr_update(&mut self.pawn_corrhist, stm, pawn_h, bonus);
+            corr_update(&mut self.minor_corrhist, stm, minor_h, bonus);
+            corr_update(&mut self.nonpawn_w_corrhist, stm, npw_h, bonus);
+            corr_update(&mut self.nonpawn_b_corrhist, stm, npb_h, bonus);
+        }
+
         Some(best_score)
     }
 
@@ -1496,7 +1566,7 @@ impl RustAlphaBetaEngine {
         }
 
         let in_check_now = in_check(board);
-        let stand_pat = self.evaluate(board);
+        let stand_pat = self.evaluate(board, ply);
         if !in_check_now {
             if stand_pat >= beta {
                 return Some(stand_pat);
@@ -1519,6 +1589,10 @@ impl RustAlphaBetaEngine {
                     continue;
                 }
             }
+
+            self.ensure_ply_capacity(ply + 2);
+            self.nnue_stack[ply + 1] =
+                reckless_nnue::update(board, chess_move, &self.nnue_stack[ply]);
 
             let child = board.make_move_new(chess_move);
             let child_hash = board_hash(&child);
@@ -1547,7 +1621,7 @@ impl RustAlphaBetaEngine {
         excluded_move: ChessMove,
     ) -> Option<i32> {
         if self.should_stop() || depth <= 0 {
-            return Some(self.evaluate(board));
+            return Some(self.evaluate(board, ply));
         }
 
         let mut best_score = -INFINITY;
@@ -1558,6 +1632,10 @@ impl RustAlphaBetaEngine {
             if chess_move == excluded_move {
                 continue;
             }
+
+            self.ensure_ply_capacity(ply + 2);
+            self.nnue_stack[ply + 1] =
+                reckless_nnue::update(board, chess_move, &self.nnue_stack[ply]);
 
             let child = board.make_move_new(chess_move);
             let child_hash = board_hash(&child);
@@ -1592,7 +1670,7 @@ impl RustAlphaBetaEngine {
         false
     }
 
-    fn evaluate(&mut self, board: &Board) -> i32 {
+    fn evaluate(&mut self, board: &Board, ply: usize) -> i32 {
         let board_key = board_hash(board);
         let eval_idx = board_key as usize & EVAL_CACHE_MASK;
         let cached = &self.eval_cache[eval_idx];
@@ -1600,197 +1678,10 @@ impl RustAlphaBetaEngine {
             return cached.score;
         }
 
-        // Use NNUE evaluation (much stronger than HCE)
-        let score = nnue_evaluate(board);
-        self.eval_cache[eval_idx] = EvalCacheEntry {
-            key: board_key,
-            score,
-        };
-        return score;
-
-        // HCE fallback (unreachable when NNUE is loaded)
-        #[allow(unreachable_code)]
-        let phase = game_phase(board);
-        let endgame = phase <= 6;
-        let mut white_mg = 0;
-        let mut black_mg = 0;
-        let mut white_eg = 0;
-        let mut black_eg = 0;
-
-        for square in piece_bb(board, Color::White, Piece::Pawn) {
-            let idx = square_index(square);
-            white_mg += PAWN + PAWN_TABLE[idx];
-            white_eg += PAWN + PAWN_EG_TABLE[idx];
-        }
-        for square in piece_bb(board, Color::Black, Piece::Pawn) {
-            let idx = mirror_index(square_index(square));
-            black_mg += PAWN + PAWN_TABLE[idx];
-            black_eg += PAWN + PAWN_EG_TABLE[idx];
-        }
-
-        for square in piece_bb(board, Color::White, Piece::Knight) {
-            let idx = square_index(square);
-            white_mg += KNIGHT + KNIGHT_TABLE[idx];
-            white_eg += KNIGHT + KNIGHT_EG_TABLE[idx];
-        }
-        for square in piece_bb(board, Color::Black, Piece::Knight) {
-            let idx = mirror_index(square_index(square));
-            black_mg += KNIGHT + KNIGHT_TABLE[idx];
-            black_eg += KNIGHT + KNIGHT_EG_TABLE[idx];
-        }
-
-        for square in piece_bb(board, Color::White, Piece::Bishop) {
-            let idx = square_index(square);
-            white_mg += BISHOP + BISHOP_TABLE[idx];
-            white_eg += BISHOP + BISHOP_EG_TABLE[idx];
-        }
-        for square in piece_bb(board, Color::Black, Piece::Bishop) {
-            let idx = mirror_index(square_index(square));
-            black_mg += BISHOP + BISHOP_TABLE[idx];
-            black_eg += BISHOP + BISHOP_EG_TABLE[idx];
-        }
-
-        for square in piece_bb(board, Color::White, Piece::Rook) {
-            let idx = square_index(square);
-            white_mg += ROOK + ROOK_TABLE[idx];
-            white_eg += ROOK + ROOK_EG_TABLE[idx];
-        }
-        for square in piece_bb(board, Color::Black, Piece::Rook) {
-            let idx = mirror_index(square_index(square));
-            black_mg += ROOK + ROOK_TABLE[idx];
-            black_eg += ROOK + ROOK_EG_TABLE[idx];
-        }
-
-        for square in piece_bb(board, Color::White, Piece::Queen) {
-            let idx = square_index(square);
-            white_mg += QUEEN + QUEEN_TABLE[idx];
-            white_eg += QUEEN + QUEEN_EG_TABLE[idx];
-        }
-        for square in piece_bb(board, Color::Black, Piece::Queen) {
-            let idx = mirror_index(square_index(square));
-            black_mg += QUEEN + QUEEN_TABLE[idx];
-            black_eg += QUEEN + QUEEN_EG_TABLE[idx];
-        }
-
-        white_mg += king_position_score(board, Color::White, false);
-        black_mg += king_position_score(board, Color::Black, false);
-        white_eg += king_position_score(board, Color::White, true);
-        black_eg += king_position_score(board, Color::Black, true);
-
-        let pawn_entry = self.pawn_entry(board);
-        white_mg += pawn_entry.white_structure_mg + pawn_entry.white_center_mg;
-        black_mg += pawn_entry.black_structure_mg + pawn_entry.black_center_mg;
-        white_eg += pawn_entry.white_structure_eg;
-        black_eg += pawn_entry.black_structure_eg;
-
-        let white_mobility = mobility_score(board, Color::White);
-        let black_mobility = mobility_score(board, Color::Black);
-        white_mg += white_mobility;
-        black_mg += black_mobility;
-        white_eg += white_mobility / 2;
-        black_eg += black_mobility / 2;
-
-        let white_rook_activity = rook_activity_score(
-            board,
-            Color::White,
-            &pawn_entry.white_files,
-            &pawn_entry.black_files,
-        );
-        let black_rook_activity = rook_activity_score(
-            board,
-            Color::Black,
-            &pawn_entry.black_files,
-            &pawn_entry.white_files,
-        );
-        white_mg += white_rook_activity;
-        black_mg += black_rook_activity;
-        white_eg += white_rook_activity;
-        black_eg += black_rook_activity;
-
-        let white_outposts = knight_outpost_score(board, Color::White);
-        let black_outposts = knight_outpost_score(board, Color::Black);
-        white_mg += white_outposts;
-        black_mg += black_outposts;
-        white_eg += white_outposts / 3;
-        black_eg += black_outposts / 3;
-
-        white_mg += development_score(board, Color::White, endgame);
-        black_mg += development_score(board, Color::Black, endgame);
-
-        if piece_bb(board, Color::White, Piece::Bishop).popcnt() >= 2 {
-            white_mg += BISHOP_PAIR_BONUS;
-            white_eg += BISHOP_PAIR_BONUS + 6;
-        }
-        if piece_bb(board, Color::Black, Piece::Bishop).popcnt() >= 2 {
-            black_mg += BISHOP_PAIR_BONUS;
-            black_eg += BISHOP_PAIR_BONUS + 6;
-        }
-
-        white_mg += king_safety_score(
-            board,
-            Color::White,
-            phase,
-            &pawn_entry.white_files,
-            &pawn_entry.black_files,
-        );
-        black_mg += king_safety_score(
-            board,
-            Color::Black,
-            phase,
-            &pawn_entry.black_files,
-            &pawn_entry.white_files,
-        );
-
-        // Threat evaluation
-        let white_threats = threat_score(board, Color::White);
-        let black_threats = threat_score(board, Color::Black);
-        white_mg += white_threats;
-        black_mg += black_threats;
-        white_eg += white_threats / 2;
-        black_eg += black_threats / 2;
-
-        // Connected rooks bonus
-        let white_connected = connected_rooks_score(board, Color::White);
-        let black_connected = connected_rooks_score(board, Color::Black);
-        white_mg += white_connected;
-        black_mg += black_connected;
-
-        // Passed pawn king distance (endgame only)
-        white_eg += passed_pawn_king_bonus(board, Color::White);
-        black_eg += passed_pawn_king_bonus(board, Color::Black);
-
-        // Mop-up eval: drive enemy king to corner in won endgames
-        let white_mopup = mopup_score(board, Color::White);
-        let black_mopup = mopup_score(board, Color::Black);
-        white_eg += white_mopup;
-        black_eg += black_mopup;
-
-        let white_score = tapered_score(white_mg, white_eg, phase);
-        let black_score = tapered_score(black_mg, black_eg, phase);
-
-        let mut score = if board.side_to_move() == Color::White {
-            white_score - black_score + TEMPO_BONUS
-        } else {
-            black_score - white_score + TEMPO_BONUS
-        };
-
-        // Contempt: penalize draws slightly when we have material advantage
-        // This makes the engine play for wins against weaker opponents
-        if score.abs() < 50 {
-            let our_material = if board.side_to_move() == Color::White {
-                white_mg
-            } else {
-                black_mg
-            };
-            let their_material = if board.side_to_move() == Color::White {
-                black_mg
-            } else {
-                white_mg
-            };
-            if our_material > their_material + 100 {
-                score += CONTEMPT;
-            }
-        }
+        // Use NNUE evaluation
+        let mut acc = self.nnue_stack[ply];
+        reckless_nnue::refresh_threats(board, &mut acc);
+        let score = reckless_nnue::evaluate(board, &acc);
 
         self.eval_cache[eval_idx] = EvalCacheEntry {
             key: board_key,
@@ -1924,6 +1815,21 @@ impl RustAlphaBetaEngine {
         *history = updated.clamp(-CAPTURE_HISTORY_LIMIT, CAPTURE_HISTORY_LIMIT) as i16;
     }
 
+    /// Compute the total correction from all four correction history tables.
+    /// Divides by 55 (vs reckless's 77 which has 6 terms; we have 4 so scale accordingly).
+    fn eval_correction(&self, board: &Board) -> i32 {
+        let stm = board.side_to_move();
+        let pawn_h = compute_pawn_hash(board);
+        let minor_h = compute_minor_hash(board);
+        let npw_h = compute_nonpawn_hash(board, Color::White);
+        let npb_h = compute_nonpawn_hash(board, Color::Black);
+        (corr_get(&self.pawn_corrhist, stm, pawn_h)
+            + corr_get(&self.minor_corrhist, stm, minor_h)
+            + corr_get(&self.nonpawn_w_corrhist, stm, npw_h)
+            + corr_get(&self.nonpawn_b_corrhist, stm, npb_h))
+            / 55
+    }
+
     fn ensure_ply_capacity(&mut self, size: usize) {
         if self.killer_moves.len() < size {
             self.killer_moves.resize(size, [None, None]);
@@ -1955,7 +1861,7 @@ impl RustAlphaBetaEngine {
 
         for _ in 0..depth {
             let key = board_hash(&board);
-            let idx = key as usize & TT_MASK;
+            let idx = key as usize & self.tt_mask;
             let entry = &self.tt[idx];
             if entry.key != key {
                 break;
@@ -1980,6 +1886,84 @@ impl RustAlphaBetaEngine {
 
 fn board_hash(board: &Board) -> u64 {
     board.get_hash()
+}
+
+// --- Correction history helpers ---
+
+/// Pre-computed random hash keys for piece-square combinations.
+/// Layout: [color(2)][piece(6)][square(64)] = 768 entries.
+/// Generated with a fixed seed (Knuth multiplicative hash) for reproducibility.
+static PIECE_HASH_KEYS: std::sync::LazyLock<[[u64; 64]; 12]> =
+    std::sync::LazyLock::new(|| {
+        let mut keys = [[0u64; 64]; 12];
+        let mut seed: u64 = 0x9e37_79b9_7f4a_7c15;
+        for slot in keys.iter_mut().flatten() {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            *slot = seed;
+        }
+        keys
+    });
+
+fn piece_hash_key(piece: Piece, square: Square, color: Color) -> u64 {
+    let piece_idx = piece.to_index(); // 0=Pawn,1=Knight,2=Bishop,3=Rook,4=Queen,5=King
+    let color_idx = if color == Color::White { 0 } else { 1 };
+    PIECE_HASH_KEYS[color_idx * 6 + piece_idx][square.to_index()]
+}
+
+/// Pawn-structure hash (board.get_pawn_hash() always returns 0 in chess-3.2.0).
+fn compute_pawn_hash(board: &Board) -> u64 {
+    let mut h = 0u64;
+    for sq in piece_bb(board, Color::White, Piece::Pawn) {
+        h ^= piece_hash_key(Piece::Pawn, sq, Color::White);
+    }
+    for sq in piece_bb(board, Color::Black, Piece::Pawn) {
+        h ^= piece_hash_key(Piece::Pawn, sq, Color::Black);
+    }
+    h
+}
+
+/// Minor piece (knight + bishop) hash for correction history.
+fn compute_minor_hash(board: &Board) -> u64 {
+    let mut h = 0u64;
+    for color in [Color::White, Color::Black] {
+        for sq in piece_bb(board, color, Piece::Knight) {
+            h ^= piece_hash_key(Piece::Knight, sq, color);
+        }
+        for sq in piece_bb(board, color, Piece::Bishop) {
+            h ^= piece_hash_key(Piece::Bishop, sq, color);
+        }
+    }
+    h
+}
+
+/// Non-pawn piece hash for one color (used for two separate correction tables).
+fn compute_nonpawn_hash(board: &Board, color: Color) -> u64 {
+    let mut h = 0u64;
+    for piece in [Piece::Knight, Piece::Bishop, Piece::Rook, Piece::Queen, Piece::King] {
+        for sq in piece_bb(board, color, piece) {
+            h ^= piece_hash_key(piece, sq, color);
+        }
+    }
+    h
+}
+
+#[inline(always)]
+fn corr_get(table: &[i32], stm: Color, key: u64) -> i32 {
+    let stm_idx = if stm == Color::White { 0 } else { 1 };
+    table[stm_idx * CORR_SIZE + (key as usize & (CORR_SIZE - 1))]
+}
+
+fn corr_update(table: &mut [i32], stm: Color, key: u64, bonus: i32) {
+    let stm_idx = if stm == Color::White { 0 } else { 1 };
+    let idx = stm_idx * CORR_SIZE + (key as usize & (CORR_SIZE - 1));
+    let current = table[idx];
+    let clamped = bonus.clamp(-CORR_MAX, CORR_MAX);
+    // Stockfish-style: entry += bonus - abs(bonus) * entry / MAX
+    // Using signed current (not abs) so positive bonuses can recover negative values
+    table[idx] = (current + clamped - clamped.abs() * current / CORR_MAX)
+        .clamp(-CORR_MAX, CORR_MAX);
 }
 
 fn available_root_threads() -> usize {
@@ -2267,17 +2251,15 @@ fn late_move_reduction(depth: i32, move_count: usize) -> i32 {
     LMR_TABLE[d][m]
 }
 
-fn late_move_pruning_limit(depth: i32) -> usize {
-    match depth {
-        d if d <= 1 => 4,
-        2 => 9,
-        3 => 14,
-        4 => 20,
-        5 => 28,
-        6 => 38,
-        7 => 50,
-        8 => 65,
-        _ => usize::MAX,
+fn late_move_pruning_limit(depth: i32, improving: bool) -> usize {
+    if depth > 8 {
+        return usize::MAX;
+    }
+    let base = 3 + (depth * depth) as usize;
+    if improving {
+        base * 2
+    } else {
+        base
     }
 }
 

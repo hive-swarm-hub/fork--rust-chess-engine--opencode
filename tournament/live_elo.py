@@ -18,12 +18,14 @@ import os
 
 # ── CCRL Blitz ELO seeds (March 2026) ────────────────────────────────────────
 CCRL = {
+    "lizard":     3740, "oxidation":  2362,
     "stockfish":  3792, "stormphrax": 3750, "viridithas": 3742,
     "koivisto":   3689, "tcheran":    3634, "blackmarlin": 3629,
     "akimbo":     3621, "patricia":   3542, "carp":        3529,
     "blackcore":  3444, "avalanche":  3396, "frozenight":  3367,
-    "nalwald":    3346, "wahoo":      3085, "inanis":      3084,
-    "4ku":        3061, "tantabus":   2553,
+    "nalwald":    3346, "stockdory":  3400, "wahoo":       3085,
+    "inanis":     3084, "4ku":        3061, "aurora":      2873,
+    "apotheosis": 2748, "tantabus":   2553, "tofiks":      1781,
 }
 
 # ── Argument parsing ──────────────────────────────────────────────────────────

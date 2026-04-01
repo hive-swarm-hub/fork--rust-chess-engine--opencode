@@ -1,0 +1,115 @@
+commit	elo	games_played	status	description
+29f14dd	2324.3	10	keep	baseline: alpha-beta + HCE, TT, LMR, null move, PVS, PSTs, king safety, mobility
+f41dfe2	2200.0	10	keep	baseline re-eval: same engine, 5W/0D/5L
+ad9119d	2418.7	10	keep	complexity-aware time management: scale allocation by game phase, check status, piece count
+4fc2eec	2625.5	10	keep	adopt random-seed + add probcut pruning at depth>=6 with beta+200 margin
+797f2fe	2800.0	10	keep	add TT probing and storing in quiescence search
+6c48bc0	2539.9	10	discard	history-based LMR: finer-grained reductions based on history score and improving flag
+fc5ea3b	2369.5	10	discard	double TT to 4M, eval cache to 1M, pawn cache to 512K entries
+a5a44b7	2760.4	10	discard	expand opening book: cover all 30 EPD tournament positions with theory lines
+8218f58	2760.4	10	discard	add multi-cut pruning: prune non-PV nodes at depth>=8 when 3/6 moves beat beta at reduced depth
+237f554	2369.5	10	discard	add minimal NNUE correction: 768->8->1 net with PST-derived weights for piece interaction patterns
+2242eaa	2474.1	10	discard	combine expanded EPD book (all 30 positions) + multi-cut pruning (non-PV depth>=8)
+c2f1923	2800.0	10	keep	adopt random-seed dc291ee8: LMP d7-8 extension + tightened futility margins (2800 ELO) - verified 10-0
+c749acd	2800.0	10	keep	tighten aspiration window from 40 to 30 centipawns - verified 10-0
+1847190	2324.3	10	discard	extend LMP to depth 9 with limit 85 moves
+4cd5bfe	2539.9	10	discard	increase contempt from 12 to 25 for more aggressive play against weaker opponents
+f16529d	2474.1	10	verify	consistency re-run of unchanged code: 8W/0D/2L confirms ~300 ELO variance
+4965bba	2625.5	10	discard	add check extension at leaf nodes: extend by 1 ply when move gives check at depth<=2
+da61fd2	2760.4	10	discard	slightly more aggressive null move reduction at depth>=12: add depth/12 term
+3b305b0	2539.9	10	discard	relax SEE pruning threshold from -50*depth to -40*depth for quiet moves
+2641474	2369.5	10	discard	allocate 1.5x time for first 3 post-book moves: critical transition decisions
+be5aeb6	2760.4	10	keep	reduce minimum time from 100ms to 50ms - zero losses (9W/1D/0L), PGN-driven fix
+58917cc	2369.5	10	discard	increase repetition penalty 4x to prevent drawn-by-repetition when winning (PGN showed mate-in-14 drawn by 3-fold)
+740e30c	2418.7	10	verify	final consistency re-run: 6W/3D/1L confirms ~2650-2700 true average, 2800 peak is variance
+ee43222	2625.5	10	discard	tighten futility margins at d1-2 by 15%: RFP 75/140->64/119, FUT 90/155->77/132
+0290425	2625.5	10	discard	add continuation history (2-ply follow-up): track good moves relative to grandparent move for better move ordering and LMR
+2c9df01	2675.7	10	keep	add ProbCut pruning depth>=5 beta+200 margin (NEW ANCHOR 2800: opponents 2600-3000)
+947c681	2200.0	10	discard	tune LMR more aggressive (0.6+ln*ln/2.0) with PV-node reduction — 0W/0D/10L too aggressive
+3a535d9	2718.3	10	keep	add best-move stability time management: stop early when stable 4+ iterations (anchor 2800)
+d55f43f	2581.3	10	discard	SEE pruning for bad captures at depth<=6 — too aggressive, lost good captures
+1000e19	2239.6	10	discard	null move reduction 3+depth/4 — too aggressive, 0W/1D/9L
+146fbc7	2581.3	10	discard	LMR for late captures (reduce 1 ply when move_count>6) — lost ELO
+1000e19	2239.6	10	discard	null move reduction 3+depth/4 — too aggressive, 0W/1D/9L
+d231e62	2675.7	10	discard	enable Lazy SMP with small worker TTs (64K) — overhead worse than benefit
+a7d77e9	2630.5	10	discard	non-linear king safety attack-units system — too penalizing
+2a38685	2581.3	10	discard	replace IID with IIR + lower singular extension threshold from depth>=8 to depth>=6
+a9e44b6	2374.5	10	discard	remove opening book + connected passed pawns + aggressive endgame king proximity — 1W/9L catastrophic
+f93a6f5	2581.3	10	discard	remove opening book only (no eval changes) — 2W/1D/7L, book actually saves time for critical positions
+bac1b1a	2525.9	10	discard	TT probing+storing in quiescence v1 (buggy cutoff logic) — 1W/2D/7L
+9b7f8a9	2581.3	10	discard	TT probing in quiescence v2 (simplified cutoffs) — 2W/1D/7L, depth-0 entries pollute TT
+00838a9	2200.0	10	discard	improving-aware pruning (RFP*2/3, futility*2/3, LMP/2 when not improving) — 0W/0D/10L catastrophic
+91ae8b6	2200.0	10	discard	PeSTO PSTs wrong orientation (rank 8 at index 0) — 0W/0D/10L
+c73ba99	2675.7	10	discard	PeSTO PSTs fixed orientation — 2W/3D/5L, search params not calibrated for PeSTO scale
+eb1e7fc	2581.3	10	discard	PeSTO PSTs + recalibrated params (aspiration 50cp, margins +50%) — 2W/1D/7L, looser pruning hurts depth
+ca84579	2718.3	10	discard	pure IIR (depth-=1 at depth>=4) — 4W/0D/6L, exactly matches baseline, simpler but not better
+ce1bb75	2630.5	10	discard	IIR + singular ext depth>=7 (was 8) — 3W/0D/7L, singular ext should stay at depth>=8
+d77dcd4	2675.7	10	discard	revert aspiration 30cp->40cp for anchor 2800 — 3W/1D/6L, 30cp is fine
+8957d8b	2630.5	10	discard	NNUE correction 768->16->1 heuristic weights clipped ±15cp — 3W/0D/7L, adds noise not knowledge
+83fb45b	2374.5	10	discard	pure IIR re-run (same code scored 2718.3 in iter 43) — 1W/0D/9L, extreme variance proof
+101ccb5	2718.3	10	discard	eval cache 512K->2M entries — 2W/4D/4L, matches baseline exactly (second neutral change found)
+a075ded	2718.3	10	discard	IIR + eval cache 2M combined — 3W/2D/5L, matches baseline exactly (third 2718.3 result)
+ec5325b	2630.5	10	discard	IIR + eval cache 2M + pawn cache 1M — 3W/0D/7L, pawn cache increase may hurt via cache pressure
+fde7960	2581.3	10	discard	IIR + eval cache 2M 4th run — 2W/1D/7L, same combo scored 2718.3 x3 before, pure variance
+ec5325b	2630.5	10	discard	IIR + eval cache 2M + pawn cache 1M — 3W/0D/7L, pawn cache hurts via memory pressure
+c3a5004	2200.0	10	discard	Stockfish NNUE nn-04cf2b4ed1da HalfKP inference — 0W/0D/10L, broken scaling/feature mapping
+739c33a	2200.0	10	discard	Stockfish NNUE fixed scaling /200 — 0W/0D/10L, scores OK but 10x slower, depth 5-7 vs 11-16
+929469f	2630.5	10	discard	remove threat_score for NPS boost — 3W/0D/7L, marginal NPS gain doesn't compensate eval loss
+b2591d8	2675.7	10	discard	IIR + eval cache 2M 6th run — 3W/1D/6L, combo scores: 2718x3, 2581x2, 2675x1, median ~2700
+929469f	2630.5	10	discard	remove threat_score for NPS — marginal gain doesn't compensate
+ed8e52f	2581.3	10	discard	pure IIR 3rd run — 2W/1D/7L, IIR scores: 2718, 2374, 2581, avg ~2558
+232e315	2581.3	10	verify	baseline consistency (version bump only) — 2W/1D/7L, confirms ~2600 true strength
+41b75a4	2200.0	10	discard	Stockfish NNUE incremental + cached — 0W/0D/10L, depth 9 vs HCE depth 14, NNUE 100x slower per eval without SIMD
+81b1a76	ERROR	0	crash	aarch64 native compilation — build fails, eval.sh expects target/release/ but aarch64 outputs to different path
+b61c17e	2718.3	10	discard	adopt random-seed 68de contempt=0 — 3W/2D/5L, matches baseline, their 2924.3 was lucky draw
+1824564	2881.7	10	keep	contempt=0 on our optimized code (1/15 time, 50ms min) — 4W/4D/2L NEW BEST!
+2e61d95	2460.1	10	discard	eval cache 2M on contempt=0 base — 1W/1D/8L, memory pressure hurts
+f5470b7	2460.1	10	verify	contempt=0 consistency run — 1W/1D/8L, same code scored 2881.7 before (421 ELO variance!)
+e16f93d	2525.9	10	discard	remove contempt code entirely — 2W/0D/8L, changed repetition/stalemate scoring from -CONTEMPT to DRAW_SCORE
+97d7e4e	2675.7	10	discard	remove mopup_score — 3W/1D/6L, neutral (within variance of contempt=0 base ~2650)
+4f917d3	2581.3	10	discard	variance sampling run #1 on contempt=0 — 2W/1D/7L, avg now ~2625 across 5 runs
+5424470	2460.1	10	discard	codegen-units=1 on contempt=0 — 1W/1D/8L, variance (avg ~2608 across 6 runs)
+a7b209a	2239.6	10	discard	panic=abort on contempt=0 — 0W/1D/9L, worst run yet, pure bad luck
+0f5ec36	2581.3	10	discard	final variance sampling — 2W/1D/7L, engine at ceiling
+90ed70c	2239.6	10	discard	recapture extension at depth>=3 — 0W/1D/9L, too many extensions slow search
+b18f46e	2969.5	10	keep	nnue-rs NNUE (HalfKP 256x2-32-32-1) on contempt=0 optimized base — 6W/2D/2L NEW ALL-TIME BEST!
+0c6fdb5	3074.1	10	keep	eval cache 2M on NNUE base — 8W/0D/2L OVER 3000 ELO!
+4a79cb4	2840.5	10	discard	remove opening book on NNUE base — 4W/3D/3L, book time savings still valuable even with NNUE
+a841daf	3225.5	10	keep	IIR on NNUE base — 8W/2D/0L ZERO LOSSES! NEW ALL-TIME BEST!
+0742e84	3139.9	10	discard	lazy NNUE (material eval for pruning) — 8W/1D/1L, material-only pruning too imprecise
+239ac15	3332.4	38	keep	SPRT baseline on new eval: 35W/2D/1L in 38 games = 3332.4! Statistically significant!
+141c284	3125.4	N/A	keep	Reckless v58 NNUE integration with incremental PSQ (baseline for 40/120 TC)
+141c284f136e47bf021889f88cd6ca7419bddba2	3133.6	N/A	keep	Aspiration recovery, double singular ext, improved LMP, aggressive pruning (+8.2 ELO)
+9ea678df8d1be363383b6b119ae58756df75c08a	3198.8	N/A	keep	IIR gating, improving-aware RFP, refined futility (+65.2 ELO)
+9cc0d63	3148.8	210	discard	material scaling + soft RFP + ply4 improving fallback: -50 ELO
+d3bd31d	3192.6	200	discard	NMP eval>=beta condition: -6.2 ELO (within variance)
+603e0fd	3119.2	204	discard	TT eval override + draw noise randomization: -79.6 ELO
+SF18-IIR	3128.0	192	discard	SF18-style IIR (!allNode, depth>=6): -70.8 ELO. PV node IIR hurts
+b28cddb	3144.4	229	discard	Draw noise randomization only: -54.4 ELO. Inconsistency from -1/+1 alternation hurts
+TT-eval-override-v2	3129.3	204	discard	Corrected TT eval override (estimated_eval separate from static_eval): -69.5 ELO. TT bounds not accurate enough
+NMP-cutNode	3163.3	191	discard	NMP at cut_node only (SF18/Reckless style): -35.5 ELO. PV node NMP is valuable
+BNFP	3122.8	204	discard	Bad Noisy Futility Pruning (SEE<0 captures, eval+100d<=alpha): -76 ELO. Too aggressive
+double-SE-margin	3078.1	216	discard	Margin-based double SE (se_score < se_beta - 60 - 10d): -120.7 ELO. Way too aggressive
+fe0d4bb	3208.0	201	keep	LMP at cut_node only: PV nodes search all quiet moves (+9.2 ELO) NEW BEST!
+3 changes	3122.6	210	discard	NMP(2+(d+1)/4) + SEE(-12d^2) + LMP(2+d^2+d/2) bundle: -85.4 ELO
+cd2816f	3070.3	193	discard	hindsight extension (parent LMR>=2 + net eval<0): -137.7 ELO, over-extends
+67bf52b	3133.7	197	discard	LMR alpha-raises full count: -74.3 ELO
+4e5e979	3143.9	201	discard	LMR alpha-raises binary +1: -64.1 ELO
+c44a611	3127.4	195	discard	Check extension (gives check, depth<=6): -80.6 ELO
+94844f8	2596.4	191	discard	In-check extension (when in check +1 depth): -611.6 ELO, depth explosion
+47f81aa51be6a7536a9c66ec666c226abe26e52c	3168.1	215	discard	History aging (/2 each ID iter): -40 ELO, hurts ordering
+47f81aa51be6a7536a9c66ec666c226abe26e52c	3157.7	221	discard	TT value as static eval override: -50 ELO, depth-limited TT scores unreliable for pruning
+47f81aa51be6a7536a9c66ec666c226abe26e52c	3118.6	198	discard	NMP at cut_node only: -90 ELO, NMP important at all nodes for this engine
+47f81aa51be6a7536a9c66ec666c226abe26e52c	3176.0	201	discard	RFP blended return (2*beta+eval)/3: -32 ELO, slightly less accurate propagation
+47f81aa51be6a7536a9c66ec666c226abe26e52c	3111.1	211	discard	LMR +1 at cut_node: -97 ELO, too aggressive reduction makes cut_node searches too shallow
+47f81aa51be6a7536a9c66ec666c226abe26e52c	2711.0	263	discard	History-aware LMP (hist/10000 adjustment): -497 ELO catastrophic, negative history over-prunes
+47f81aa51be6a7536a9c66ec666c226abe26e52c	3197.0	210	discard	History-aware LMP v2 (±1 clamp): -11 ELO, within variance but not beating baseline
+47f81aa51be6a7536a9c66ec666c226abe26e52c	3108.2	210	discard	Recapture extension (PV+TT+recapture): -100 ELO, node inflation hurts at fixed TC
+47f81aa51be6a7536a9c66ec666c226abe26e52c	3079.7	194	discard	1-ply continuation history (move ordering + updates): -128 ELO, contextual noise overrides good global history
+47f81aa51be6a7536a9c66ec666c226abe26e52c	3124.7	221	discard	Futility pruning cut_node only: -83 ELO, quality-based prunes still valid at PV nodes unlike LMP
+47f81aa51be6a7536a9c66ec666c226abe26e52c	3141.2	196	discard	SEE quiet pruning cut_node only: -67 ELO
+47f81aa51be6a7536a9c66ec666c226abe26e52c	3116.7	232	discard	NMP less aggressive reduction (2+(d+1)/4): -91 ELO, current 3+d/4 is optimal
+47f81aa51be6a7536a9c66ec666c226abe26e52c	3064.5	190	discard	ProbCut QS pre-screen filter: -143 ELO, QS misses quiet continuations needed for probcut
+47f81aa51be6a7536a9c66ec666c226abe26e52c	3145.4	196	discard	LMR divisor 1.70 (less aggressive): -63 ELO
+47f81aa51be6a7536a9c66ec666c226abe26e52c	3154.7	N/A	discard	LMR divisor 1.40 (more aggressive): -53 ELO, 1.58 is optimal
+47f81aa51be6a7536a9c66ec666c226abe26e52c	3157.6	N/A	discard	LMR from move 4 (was 3): -50 ELO, move 3 benefits from reduction

@@ -1,0 +1,66 @@
+Verifying tool integrity...
+Tool integrity verified.
+Compiling engine...
+ERROR: Compilation failed or timed out (5 min limit).
+warning: fields `version`, `arch`, `desc_len`, `transformer_arch`, and `network_arch` are never read
+   --> /tmp/nnue-rs/src/stockfish/halfkp.rs:258:13
+    |
+256 |         pub struct SfHalfKpModelReader {
+    |                    ------------------- fields in this struct
+257 |             #[br(args(VERSION))]
+258 |             version: Magic<u32>,
+    |             ^^^^^^^
+259 |             #[br(args(ARCH))]
+260 |             arch: Magic<u32>,
+    |             ^^^^
+261 |             desc_len: u32,
+    |             ^^^^^^^^
+...
+265 |             transformer_arch: Magic<u32>,
+    |             ^^^^^^^^^^^^^^^^
+...
+268 |             network_arch: Magic<u32>,
+    |             ^^^^^^^^^^^^
+    |
+    = note: `SfHalfKpModelReader` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> /tmp/nnue-rs/src/stockfish/halfkp.rs:109:22
+    |
+109 |     pub fn new_state(&self, white_king: Square, black_king: Square) -> SfHalfKpState {
+    |                      ^^^^^ the lifetime is elided here                 ^^^^^^^^^^^^^ the same lifetime is hidden here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+    = note: `#[warn(mismatched_lifetime_syntaxes)]` on by default
+help: use `'_` for type paths
+    |
+109 |     pub fn new_state(&self, white_king: Square, black_king: Square) -> SfHalfKpState<'_> {
+    |                                                                                     ++++
+
+warning: `nnue` (lib) generated 2 warnings (run `cargo fix --lib -p nnue` to apply 1 suggestion)
+   Compiling hive-chess v0.3.0 (/home/supersketchy/git/rust-chess-engine/engine)
+error: unexpected closing delimiter: `}`
+    --> src/main.rs:1440:9
+     |
+1254 |         for index in 0..move_picker.len() {
+     |                                           - this delimiter might not be properly closed...
+...
+1324 |                     }
+     |                     - ...as it matches this but it has different indentation
+...
+1440 |         }
+     |         ^ unexpected closing delimiter
+
+error: could not compile `hive-chess` (bin "hive-chess") due to 1 previous error
+--- (Parallel SPRT Mode Activated 🚀)
+elo:              ERROR
+games_played:     0
+score_pct:        0.000
+wins:             0
+draws:            0
+losses:           0
+binary_bytes:     0
+line_count:       3463
+compile_secs:     0
+valid:            false

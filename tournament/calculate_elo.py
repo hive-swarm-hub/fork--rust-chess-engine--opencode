@@ -15,11 +15,13 @@ import collections
 # CCRL Blitz ELO seeds (March 2026)
 CCRL = {
     "stockfish":  3792, "stormphrax": 3750, "viridithas": 3742,
-    "koivisto":   3689, "tcheran":    3634, "blackmarlin": 3629,
-    "akimbo":     3621, "patricia":   3542, "carp":        3529,
-    "blackcore":  3444, "avalanche":  3396, "frozenight":  3367,
-    "nalwald":    3346, "wahoo":      3085, "inanis":      3084,
-    "4ku":        3061, "tantabus":   2553,
+    "lizard":     3740, "koivisto":   3689, "tcheran":    3634,
+    "blackmarlin": 3629, "akimbo":    3621, "patricia":   3542,
+    "carp":        3529, "blackcore": 3444, "avalanche":  3396,
+    "frozenight":  3367, "nalwald":   3346, "stockdory":  3400,
+    "wahoo":       3085, "inanis":    3084, "4ku":        3061,
+    "aurora":      2873, "apotheosis": 2748, "tantabus":  2553,
+    "oxidation":   2362, "tofiks":    1781,
 }
 
 def parse_pgn(path):
@@ -27,6 +29,7 @@ def parse_pgn(path):
     games    = collections.defaultdict(int)
     vs       = collections.defaultdict(lambda: collections.defaultdict(float))
     vs_games = collections.defaultdict(lambda: collections.defaultdict(int))
+    vs_wdl   = collections.defaultdict(lambda: collections.defaultdict(lambda: [0, 0, 0]))
 
     with open(path) as f:
         white = black = result = None
@@ -41,10 +44,16 @@ def parse_pgn(path):
             if white and black and result:
                 if result == "1-0":
                     sw, sb = 1.0, 0.0
+                    vs_wdl[white][black][0] += 1  # white win
+                    vs_wdl[black][white][2] += 1  # black loss
                 elif result == "0-1":
                     sw, sb = 0.0, 1.0
+                    vs_wdl[black][white][0] += 1  # black win
+                    vs_wdl[white][black][2] += 1  # white loss
                 elif result == "1/2-1/2":
                     sw, sb = 0.5, 0.5
+                    vs_wdl[white][black][1] += 1
+                    vs_wdl[black][white][1] += 1
                 else:
                     white = black = result = None
                     continue
@@ -54,7 +63,7 @@ def parse_pgn(path):
                 vs[black][white] += sb;  vs_games[black][white] += 1
                 white = black = result = None
 
-    return scores, games, vs, vs_games
+    return scores, games, vs, vs_games, vs_wdl
 
 def expected(ra, rb):
     return 1.0 / (1.0 + 10 ** ((rb - ra) / 400.0))
@@ -104,22 +113,28 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("pgn", help="Path to PGN file")
     parser.add_argument("--challenger", default="hivechess")
+    parser.add_argument("--output", help="Save report to this file")
     args = parser.parse_args()
 
-    scores, games, vs, vs_games = parse_pgn(args.pgn)
+    scores, games, vs, vs_games, vs_wdl = parse_pgn(args.pgn)
     challenger = args.challenger
+
+    out = open(args.output, "w") if args.output else None
+    def emit(line=""):
+        print(line)
+        if out: out.write(line + "\n")
 
     if challenger not in games:
         print(f"ERROR: '{challenger}' not found in PGN.")
         sys.exit(1)
 
-    print(f"\n{'='*65}")
-    print(f"  Performance ELO Report  —  {challenger}")
-    print(f"{'='*65}\n")
+    emit(f"\n{'='*65}")
+    emit(f"  Performance ELO Report  —  {challenger}")
+    emit(f"{'='*65}\n")
 
     # Per-opponent breakdown
-    print(f"  {'Opponent':<20} {'CCRL':>6}  {'Score':>10}  {'G':>4}  {'%':>6}")
-    print("  " + "─" * 55)
+    emit(f"  {'Opponent':<20} {'CCRL':>6}  {'Score':>10}  {'G':>4}  {'%':>6}")
+    emit("  " + "─" * 55)
 
     opponents = sorted(
         vs[challenger].keys(),
@@ -132,7 +147,7 @@ def main():
         sc   = vs[challenger][opp]
         pct  = 100 * sc / g if g else 0
         seed = CCRL.get(opp, "?")
-        print(f"  {opp:<20} {str(seed):>6}  {sc:>5.1f}/{g:<4}  {g:>4}  {pct:>5.1f}%")
+        emit(f"  {opp:<20} {str(seed):>6}  {sc:>5.1f}/{g:<4}  {g:>4}  {pct:>5.1f}%")
 
     # Overall performance ELO
     elo, n = performance_elo(challenger, vs, vs_games, CCRL)
@@ -142,28 +157,30 @@ def main():
 
     if elo is not None:
         ci = error_bar(n, overall_pct)
-        print(f"\n  {'─'*55}")
-        print(f"  Overall score   : {total_sc:.1f} / {total_g}  ({100*overall_pct:.1f}%)")
-        print(f"  Performance ELO : {elo}  (±{ci} at 95% CI)")
-        print(f"  Games vs known  : {n}")
+        emit(f"\n  {'─'*55}")
+        emit(f"  Overall score   : {total_sc:.1f} / {total_g}  ({100*overall_pct:.1f}%)")
+        emit(f"  Performance ELO : {elo}  (±{ci} at 95% CI)")
+        emit(f"  Games vs known  : {n}")
     else:
-        print(f"\n  Could not estimate ELO (no games vs CCRL-seeded opponents)")
+        emit(f"\n  Could not estimate ELO (no games vs CCRL-seeded opponents)")
 
     # Head-to-head W/D/L table
-    print(f"\n  {'─'*55}")
-    print(f"  {'Opponent':<20}  {'W':>4}  {'D':>4}  {'L':>4}")
-    print("  " + "─" * 40)
+    emit(f"\n  {'─'*55}")
+    emit(f"  {'Opponent':<20}  {'W':>4}  {'D':>4}  {'L':>4}")
+    emit("  " + "─" * 40)
+    total_w = total_d = total_l = 0
     for opp in opponents:
         g = vs_games[challenger][opp]
         if g == 0: continue
-        w = d = l = 0
-        # We need per-game data — approximate from score
-        sc = vs[challenger][opp]
-        # Can't reconstruct exact W/D/L from score alone without game-level data
-        # Show score fraction instead
-        print(f"  {opp:<20}  {sc:>4.1f} pts / {g} games")
+        w, d, l = vs_wdl[challenger][opp]
+        total_w += w; total_d += d; total_l += l
+        emit(f"  {opp:<20}  {w:>4}  {d:>4}  {l:>4}")
+    emit("  " + "─" * 40)
+    emit(f"  {'Total':<20}  {total_w:>4}  {total_d:>4}  {total_l:>4}")
+    emit()
 
-    print()
+    if out:
+        out.close()
 
 if __name__ == "__main__":
     main()

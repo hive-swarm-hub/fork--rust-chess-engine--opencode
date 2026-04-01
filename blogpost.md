@@ -10,7 +10,7 @@ github: "https://github.com/hive-swarm-hub/fork--rust-chess-engine--opencode"
 
 ## TL;DR
 
-Hive improved a Rust chess engine from **2,324 to 3,208 ELO** (+884 points) in 2-3 weeks. It ran 100+ experiments, found that NNUE evaluation was worth ~+500 ELO over the hand-crafted baseline, and picked up another ~+380 from search improvements and correction history.
+Hive improved a Rust chess engine from **2,324 to 3,208 ELO** (+884 points) in about a week. It ran 100+ experiments, found that NNUE evaluation was worth ~+500 ELO over the hand-crafted baseline, and picked up another ~+380 from search improvements and correction history.
 
 The gauntlet runs in 8-15 minutes with parallel SPRT. Full iteration (read code, write change, test) is 1-4 hours depending on complexity.
 
@@ -24,9 +24,9 @@ The engine started as a Rust port of [github.com/deedy/chess](https://github.com
 
 First gauntlet result: **2,324 ELO**.
 
-## From 2,324 to 3,208 ELO in Three Weeks
+## From 2,324 to 3,208 ELO in One Week
 
-The engine started at 2,324 ELO—alpha-beta with a hand-crafted eval, transposition table, null move pruning, LMR. Decent but nothing special. I pointed Hive at it and told it to maximize ELO. Three weeks later: **3,208 ELO**, SPRT-confirmed over 201 games against Stockfish 2600-3000.
+The engine started at 2,324 ELO—alpha-beta with a hand-crafted eval, transposition table, null move pruning, LMR. Decent but nothing special. I pointed Hive at it and told it to maximize ELO. One week later: **3,208 ELO**, SPRT-confirmed over 201 games against Stockfish 2600-3000.
 
 The loop is: Hive reads the code, proposes a change, compiles, runs a gauntlet, keeps it if ELO goes up, reverts if not. With little/no knowledge of what makes a chess engine good required on our end, Hive was able to optimize it to become a top 150 engine.
 
@@ -44,7 +44,7 @@ The bad experiments, such as check extensions lost **-611 ELO** because it cause
 
 ## The Evaluation Script
 
-The gauntlet evolved a lot over the three weeks. It started as a basic cutechess-cli script running a fixed number of games against SF 2200. By the end it was running in parallel and ensuring statistical significance. 
+The gauntlet evolved a lot over that week. It started as a basic cutechess-cli script running a fixed number of games against SF 2200. By the end it was running in parallel and ensuring statistical significance. 
 
 **Throughout — anti-cheat hardening.** SHA-256 checksums on the Stockfish and fastchess binaries. A git diff check that fails the run if eval.sh or compute_elo.py was modified. A source scan that rejects any engine Rust code containing network calls, filesystem paths outside `engine/`, or subprocess spawning. This was added after realizing the eval loop is an attack surface if you're running untrusted agents.
 
@@ -142,7 +142,7 @@ That combination—fast feedback, objective score, documented solution space—i
 
 ## Conclusion
 
-2,324 → 3,208 ELO in three weeks. The biggest single gain was utilizing the Reckless v58 NNUE. Correction history and search tuning added another ~+380. The failed experiments(and there were a lot of them) cost nothing because the eval loop was fast enough to treat each one as disposable. With claude code running different ideas, the cost of testing out a new idea (either generated from an llm, or a human idea) becomes little.
+2,324 → 3,208 ELO in one week. The biggest single gain was utilizing the Reckless v58 NNUE. Correction history and search tuning added another ~+380. The failed experiments(and there were a lot of them) cost nothing because the eval loop was fast enough to treat each one as disposable. With claude code running different ideas, the cost of testing out a new idea (either generated from an llm, or a human idea) becomes little.
 
 ---
 

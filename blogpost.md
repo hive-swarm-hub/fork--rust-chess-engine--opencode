@@ -239,7 +239,7 @@ Vulnerabilities:
   Tsx async abort:       Not affected
 ```
 
-### Tournament Results (CCRL Blitz conditions, 30 games per opponent)
+### Tournament Results (CCRL Blitz conditions, 40 games per opponent)
 
 ```
 =================================================================
@@ -248,61 +248,61 @@ Vulnerabilities:
 
   Opponent               CCRL       Score     G       %
   ───────────────────────────────────────────────────────
-  stockfish              3792    5.0/30      30   16.7%
-  stormphrax             3750    3.5/30      30   11.7%
-  viridithas             3742    3.5/30      30   11.7%
-  lizard                 3740    5.0/30      30   16.7%
-  koivisto               3689    6.5/30      30   21.7%
-  tcheran                3634    4.5/30      30   15.0%
-  blackmarlin            3629    6.5/30      30   21.7%
-  akimbo                 3621    8.0/30      30   26.7%
-  patricia               3542    8.5/30      30   28.3%
-  carp                   3529    6.0/30      30   20.0%
-  blackcore              3444   11.5/30      30   38.3%
-  stockdory              3400   12.5/30      30   41.7%
-  avalanche              3396   13.0/30      30   43.3%
-  frozenight             3367   13.5/30      30   45.0%
-  nalwald                3346   15.5/30      30   51.7%
-  wahoo                  3085   17.0/30      30   56.7%
-  inanis                 3084   21.0/30      30   70.0%
-  4ku                    3061   20.0/30      30   66.7%
-  aurora                 2873   25.5/30      30   85.0%
-  apotheosis             2748   25.5/30      30   85.0%
-  tantabus               2553   25.0/30      30   83.3%
-  oxidation              2362   29.0/30      30   96.7%
-  tofiks                 1781   27.5/30      30   91.7%
+  stockfish              3792    7.5/40      40   18.8%
+  stormphrax             3750    6.0/40      40   15.0%
+  viridithas             3742    5.5/40      40   13.8%
+  lizard                 3740    6.5/40      40   16.2%
+  koivisto               3689    8.0/40      40   20.0%
+  tcheran                3634    8.5/40      40   21.2%
+  blackmarlin            3629    5.5/40      40   13.8%
+  akimbo                 3621    6.0/40      40   15.0%
+  patricia               3542   11.0/40      40   27.5%
+  carp                   3529    8.5/40      40   21.2%
+  blackcore              3444   15.5/40      40   38.8%
+  stockdory              3400   22.0/40      40   55.0%
+  avalanche              3396   18.5/40      40   46.2%
+  frozenight             3367   20.5/40      40   51.2%
+  nalwald                3346   18.0/40      40   45.0%
+  wahoo                  3085   25.5/40      40   63.8%
+  inanis                 3084   27.0/40      40   67.5%
+  4ku                    3061   30.0/40      40   75.0%
+  aurora                 2873   33.0/40      40   82.5%
+  apotheosis             2748   30.0/40      40   75.0%
+  tantabus               2553   33.0/40      40   82.5%
+  oxidation              2362   32.5/40      40   81.2%
+  tofiks                 1781   37.0/40      40   92.5%
 
   ───────────────────────────────────────────────────────
-  Overall score   : 313.5 / 690  (45.4%)
-  Performance ELO : 3312  (±26 at 95% CI)
-  Games vs known  : 690
+  Overall score   : 415.5 / 920  (45.2%)
+  Performance ELO : 3308  (±23 at 95% CI)
+  Games vs known  : 920
 
   ───────────────────────────────────────────────────────
   Opponent                 W     D     L
   ────────────────────────────────────────
-  stockfish                0    10    20
-  stormphrax               0     7    23
-  viridithas               0     7    23
-  lizard                   0    10    20
-  koivisto                 2     9    19
-  tcheran                  1     7    22
-  blackmarlin              1    11    18
-  akimbo                   1    14    15
-  patricia                 1    15    14
-  carp                     0    12    18
-  blackcore                4    15    11
-  stockdory                4    17     9
-  avalanche                3    20     7
-  frozenight               5    17     8
-  nalwald                  5    21     4
-  wahoo                   13     8     9
-  inanis                  16    10     4
-  4ku                     12    16     2
-  aurora                  22     7     1
-  apotheosis              23     5     2
-  tantabus                21     8     1
-  oxidation               28     2     0
-  tofiks                  27     1     2
+  stockfish                0    15    25
+  stormphrax               0    12    28
+  viridithas               0    11    29
+  lizard                   0    13    27
+  koivisto                 2    12    26
+  tcheran                  0    17    23
+  blackmarlin              0    11    29
+  akimbo                   2     8    30
+  patricia                 1    20    19
+  carp                     3    11    26
+  blackcore                8    15    17
+  stockdory               13    18     9
+  avalanche                8    21    11
+  frozenight              10    21     9
+  nalwald                  6    24    10
+  wahoo                   16    19     5
+  inanis                  18    18     4
+  4ku                     21    18     1
+  aurora                  28    10     2
+  apotheosis              24    12     4
+  tantabus                26    14     0
+  oxidation               26    13     1
+  tofiks                  35     4     1
   ────────────────────────────────────────
-  Total                  189   249   252
+  Total                  247   337   336
 ```

@@ -8,9 +8,8 @@ tools/
 # Eval output
 eval/games.pgn
 
-# Results tracking (not committed per task spec)
-results.tsv
-
 # OS files
 .DS_Store
 .claude/
+__pycache__/
+*.pyc

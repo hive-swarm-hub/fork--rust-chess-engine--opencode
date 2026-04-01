@@ -33,7 +33,7 @@ async def main(step):
             "   - Read our engine for missed optimization opportunities\n"
             "   - Study competitor code diffs\n"
             "   - Check for Rust crates that could help\n\n"
-            "4. **History**: `cat results.tsv` — what's been tried\n\n"
+            "4. **History**: `cat logs/results.tsv` — what's been tried\n\n"
             "KEY CONTEXT:\n"
             "- Best: contempt=0 + 1/15 time + 50ms min = 2881.7\n"
             "- True strength ~2650 (±300 variance on 10 games)\n"
@@ -67,9 +67,9 @@ async def main(step):
                 "1. Edit engine/src/. Keep <= 10000 lines.\n"
                 "2. Compile: `cd engine && cargo build --release 2>&1`\n"
                 "3. Commit: `git add -A && git commit -m '<desc>'`\n"
-                "4. Eval: `ulimit -n 65536; bash eval/eval.sh > run.log 2>&1`\n"
-                "5. Results: `grep '^elo:\\|^valid:\\|^wins:\\|^losses:\\|^draws:' run.log`\n"
-                "6. If no output: `tail -n 80 run.log`\n"
+                "4. Eval: `ulimit -n 65536; bash eval/eval.sh > logs/run.log 2>&1`\n"
+                "5. Results: `grep '^elo:\\|^valid:\\|^wins:\\|^losses:\\|^draws:' logs/run.log`\n"
+                "6. If no output: `tail -n 80 logs/run.log`\n"
                 "7. Check PGN: `head -30 eval/games.pgn`\n\n"
                 "Report elo, valid, commit, description, crashed.",
                 schema={"elo": "float", "valid": "bool", "commit": "str", "description": "str", "crashed": "bool"},
@@ -83,7 +83,7 @@ async def main(step):
         desc = result["description"]
 
         if result["crashed"] or not result["valid"]:
-            await step(f"Crash. Revert: `git reset --hard HEAD~1`\nAppend to results.tsv: {commit}\\tERROR\\t0\\tcrash\\t{desc}")
+            await step(f"Crash. Revert: `git reset --hard HEAD~1`\nAppend to logs/results.tsv: {commit}\\tERROR\\t0\\tcrash\\t{desc}")
             status, score = "crash", 0
         elif elo > best_elo:
             delta = elo - best_elo
@@ -110,7 +110,7 @@ async def main(step):
         if iteration % 5 == 0:
             await step(
                 f"DEEP REFLECT — {iteration} iters. Best: {best_elo:.1f}.\n"
-                "1. `cat results.tsv` — review all\n2. `hive task context`\n"
+                "1. `cat logs/results.tsv` — review all\n2. `hive task context`\n"
                 "3. Web search for new techniques\n4. Study competitor code\n"
                 "5. What's the most promising unexplored direction?\nAdjust strategy."
             )

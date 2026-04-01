@@ -663,22 +663,6 @@ impl RustAlphaBetaEngine {
             return Err(String::from("Cannot search a finished game."));
         }
 
-        // Opening book lookup: if this position is in the book, play instantly
-        let board_key = board_hash(&board);
-        if let Some(book_move_str) = self.opening_book.get(&board_key) {
-            if let Ok(book_move) = ChessMove::from_str(book_move_str) {
-                if move_is_legal(&board, book_move) {
-                    return Ok(RawSearchResult {
-                        move_uci: book_move.to_string(),
-                        score: 0,
-                        depth: 1,
-                        nodes: 1,
-                        pv_uci: vec![book_move.to_string()],
-                    });
-                }
-            }
-        }
-
         let time_budget = movetime_ms.filter(|ms| *ms > 0).map(Duration::from_millis);
         let requested_depth = depth.unwrap_or(self.depth);
         let target_depth = if requested_depth <= 0 && time_budget.is_some() {

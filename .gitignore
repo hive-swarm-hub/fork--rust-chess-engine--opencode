@@ -1,3 +1,7 @@
+# Release binaries
+hive-chess
+hive-chess.exe
+
 # Neural network weights
 *.nnue
 *.bin

@@ -14,7 +14,9 @@ mod reckless_nnue;
 fn main() {
     reckless_nnue::load_parameters();
     let stdin = io::stdin();
-    let mut engine = RustAlphaBetaEngine::new(64);
+    let mut hash_mb: usize = 64;
+    let mut num_threads: usize = 1;
+    let mut engine = RustAlphaBetaEngine::new(64, hash_mb, num_threads);
     let mut root_fen = String::from("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
     let mut move_history: Vec<String> = Vec::new();
     let mut current_board = Board::default();
@@ -33,11 +35,42 @@ fn main() {
             "uci" => {
                 send("id name HiveChess 0.3");
                 send("id author HiveAgent");
+                send("option name Hash type spin default 64 min 1 max 65536");
+                send("option name Threads type spin default 1 min 1 max 512");
                 send("uciok");
             }
             "isready" => send("readyok"),
+            "setoption" => {
+                // setoption name <Name> value <Value>
+                if let (Some(&"name"), Some(name_idx)) = (tokens.get(1), tokens.iter().position(|t| *t == "name")) {
+                    let value_idx = tokens.iter().position(|t| *t == "value");
+                    let name = if let Some(vi) = value_idx {
+                        tokens[name_idx + 1..vi].join(" ")
+                    } else {
+                        tokens[name_idx + 1..].join(" ")
+                    };
+                    let value: Option<usize> = value_idx
+                        .and_then(|vi| tokens.get(vi + 1))
+                        .and_then(|v| v.parse().ok());
+                    match name.to_ascii_lowercase().as_str() {
+                        "hash" => {
+                            if let Some(mb) = value {
+                                hash_mb = mb.max(1);
+                                engine = RustAlphaBetaEngine::new(64, hash_mb, num_threads);
+                            }
+                        }
+                        "threads" => {
+                            if let Some(t) = value {
+                                num_threads = t.max(1);
+                                engine = RustAlphaBetaEngine::new(64, hash_mb, num_threads);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
             "ucinewgame" => {
-                engine = RustAlphaBetaEngine::new(64);
+                engine = RustAlphaBetaEngine::new(64, hash_mb, num_threads);
             }
             "position" => {
                 let mut idx = 1;
@@ -182,7 +215,6 @@ fn main() {
 // Engine code below
 // =============================================================================
 
-use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::OnceLock;
 use std::thread;
@@ -279,87 +311,6 @@ mod tests {
     }
 }
 
-/// Build the opening book: maps position hash -> best move UCI string.
-/// These are strong opening moves from theory, covering common openings.
-fn build_opening_book() -> HashMap<u64, &'static str> {
-    let mut book = HashMap::new();
-    // We build the book by replaying move sequences and recording hash -> next_move
-    // Each line is a sequence of moves; we record each intermediate position hash -> next move
-    let lines: &[&[&str]] = &[
-        // Italian Game / Giuoco Piano
-        &[
-            "e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "f8c5", "c2c3", "g8f6", "d2d4",
-        ],
-        // Ruy Lopez main line
-        &[
-            "e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "a7a6", "b5a4", "g8f6", "e1g1",
-        ],
-        // Scotch Game
-        &["e2e4", "e7e5", "g1f3", "b8c6", "d2d4", "e5d4", "f3d4"],
-        // Queen's Gambit
-        &["d2d4", "d7d5", "c2c4", "e7e6", "b1c3", "g8f6", "c1g5"],
-        // Queen's Gambit Declined
-        &["d2d4", "d7d5", "c2c4", "c7c6", "g1f3", "g8f6", "b1c3"],
-        // Sicilian Defense (Open)
-        &["e2e4", "c7c5", "g1f3", "d7d6", "d2d4", "c5d4", "f3d4"],
-        // Sicilian Najdorf
-        &[
-            "e2e4", "c7c5", "g1f3", "d7d6", "d2d4", "c5d4", "f3d4", "g8f6", "b1c3", "a7a6", "c1e3",
-        ],
-        // French Defense
-        &["e2e4", "e7e6", "d2d4", "d7d5", "b1c3", "g8f6", "c1g5"],
-        // Caro-Kann
-        &["e2e4", "c7c6", "d2d4", "d7d5", "b1c3", "d5e4", "c3e4"],
-        // King's Indian
-        &[
-            "d2d4", "g8f6", "c2c4", "g7g6", "b1c3", "f8g7", "e2e4", "d7d6", "g1f3",
-        ],
-        // Nimzo-Indian
-        &["d2d4", "g8f6", "c2c4", "e7e6", "b1c3", "f8b4", "e2e3"],
-        // English Opening
-        &["c2c4", "e7e5", "b1c3", "g8f6", "g1f3"],
-        // London System
-        &["d2d4", "d7d5", "g1f3", "g8f6", "c1f4", "e7e6", "e2e3"],
-        // Catalan
-        &["d2d4", "g8f6", "c2c4", "e7e6", "g2g3", "d7d5", "f1g2"],
-        // Pirc Defense
-        &["e2e4", "d7d6", "d2d4", "g8f6", "b1c3", "g7g6", "g1f3"],
-        // Scandinavian
-        &["e2e4", "d7d5", "e4d5", "d8d5", "b1c3", "d5a5", "d2d4"],
-        // Slav Defense
-        &[
-            "d2d4", "d7d5", "c2c4", "c7c6", "g1f3", "g8f6", "b1c3", "d5c4", "a2a4",
-        ],
-        // Grunfeld
-        &[
-            "d2d4", "g8f6", "c2c4", "g7g6", "b1c3", "d7d5", "c4d5", "f6d5", "e2e4",
-        ],
-        // Default opening moves
-        &["e2e4"],
-        &["e2e4", "e7e5", "g1f3"],
-        &["d2d4", "d7d5", "c2c4"],
-        &["d2d4", "g8f6", "c2c4"],
-    ];
-
-    for line in lines {
-        let mut board = Board::default();
-        for (i, move_uci) in line.iter().enumerate() {
-            if let Ok(mv) = ChessMove::from_str(move_uci) {
-                if move_is_legal(&board, mv) {
-                    // Record this position -> this move (only if not already recorded)
-                    let hash = board.get_hash();
-                    book.entry(hash).or_insert(line[i]);
-                    board = board.make_move_new(mv);
-                } else {
-                    break; // Illegal move in sequence, stop this line
-                }
-            } else {
-                break;
-            }
-        }
-    }
-    book
-}
 
 const PAWN_TABLE: [i32; 64] = [
     0, 0, 0, 0, 0, 0, 0, 0, 5, 10, 10, -20, -20, 10, 10, 5, 5, -5, -10, 0, 0, -10, -5, 5, 0, 0, 0,
@@ -597,6 +548,7 @@ struct RustAlphaBetaEngine {
     threads: usize,
     nodes: u64,
     tt: Vec<TTEntry>,
+    tt_mask: usize,
     killer_moves: Vec<[Option<ChessMove>; 2]>,
     history_heuristic: Vec<i32>,
     capture_history: Vec<i16>,
@@ -608,16 +560,21 @@ struct RustAlphaBetaEngine {
     pawn_cache: Vec<PawnCacheEntry>,
     deadline: Option<Instant>,
     stopped: bool,
-    opening_book: HashMap<u64, &'static str>,
 }
 
 impl RustAlphaBetaEngine {
-    fn new(depth: i32) -> Self {
+    fn new(depth: i32, hash_mb: usize, threads: usize) -> Self {
+        let tt_bytes = hash_mb * 1024 * 1024;
+        let entry_size = std::mem::size_of::<TTEntry>().max(1);
+        let tt_size = (tt_bytes / entry_size).next_power_of_two() / 2;
+        let tt_size = tt_size.max(1);
+        let tt_mask = tt_size - 1;
         Self {
             depth,
-            threads: available_root_threads(),
+            threads: threads.max(1),
             nodes: 0,
-            tt: vec![TTEntry::default(); TT_SIZE],
+            tt: vec![TTEntry::default(); tt_size],
+            tt_mask,
             killer_moves: vec![[None, None]; KILLER_PLY_CAPACITY],
             history_heuristic: vec![0; HISTORY_SIZE],
             capture_history: vec![0; HISTORY_SIZE * CAPTURE_HISTORY_PIECES],
@@ -629,7 +586,6 @@ impl RustAlphaBetaEngine {
             pawn_cache: vec![PawnCacheEntry::default(); PAWN_CACHE_SIZE],
             deadline: None,
             stopped: false,
-            opening_book: build_opening_book(),
         }
     }
 
@@ -804,7 +760,7 @@ impl RustAlphaBetaEngine {
         repetition: &mut RepetitionTracker,
     ) -> Option<(i32, ChessMove)> {
         let tt_key = board_hash(board);
-        let tt_idx = tt_key as usize & TT_MASK;
+        let tt_idx = tt_key as usize & self.tt_mask;
         let tt_move = {
             let entry = &self.tt[tt_idx];
             if entry.key == tt_key {
@@ -822,7 +778,7 @@ impl RustAlphaBetaEngine {
         if !self.should_parallelize_root(depth, root_moves.len()) {
             self.nnue_stack[0] = reckless_nnue::full_refresh_psq(board);
             let score = self.negamax(board, depth, alpha, beta, 0, repetition)?;
-            let tt_idx2 = board_hash(board) as usize & TT_MASK;
+            let tt_idx2 = board_hash(board) as usize & self.tt_mask;
             let best_move = {
                 let entry = &self.tt[tt_idx2];
                 if entry.key == board_hash(board) {
@@ -984,6 +940,7 @@ impl RustAlphaBetaEngine {
             threads: 1,
             nodes: 0,
             tt: self.tt.clone(),
+            tt_mask: self.tt_mask,
             killer_moves: self.killer_moves.clone(),
             history_heuristic: self.history_heuristic.clone(),
             capture_history: self.capture_history.clone(),
@@ -995,7 +952,6 @@ impl RustAlphaBetaEngine {
             pawn_cache: self.pawn_cache.clone(),
             deadline: self.deadline,
             stopped: false,
-            opening_book: HashMap::new(), // Workers don't need the opening book
         }
     }
 
@@ -1027,7 +983,7 @@ impl RustAlphaBetaEngine {
             EXACT
         };
         let key = board_hash(board);
-        let idx = key as usize & TT_MASK;
+        let idx = key as usize & self.tt_mask;
         let existing = &self.tt[idx];
         if existing.key == 0 || depth >= existing.depth || existing.key == key {
             self.tt[idx] = TTEntry {
@@ -1095,7 +1051,7 @@ impl RustAlphaBetaEngine {
         let alpha_original = alpha;
         let beta_original = beta;
         let tt_key = board_hash(board);
-        let tt_idx = tt_key as usize & TT_MASK;
+        let tt_idx = tt_key as usize & self.tt_mask;
         let tt_entry = {
             let entry = self.tt[tt_idx];
             if entry.key == tt_key {
@@ -1747,7 +1703,7 @@ impl RustAlphaBetaEngine {
 
         for _ in 0..depth {
             let key = board_hash(&board);
-            let idx = key as usize & TT_MASK;
+            let idx = key as usize & self.tt_mask;
             let entry = &self.tt[idx];
             if entry.key != key {
                 break;

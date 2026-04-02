@@ -2,3 +2,4 @@
 engines/
 books/
 __pycache__/
+!results.pgn

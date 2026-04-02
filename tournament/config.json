@@ -60,7 +60,7 @@
     },
     "config_name": "config.json",
     "output": 1,
-    "seed": 8320913048525070224,
+    "seed": 7908929064720459812,
     "variant": 0,
     "type": 1,
     "gauntlet_seeds": 1,
@@ -69,7 +69,7 @@
     "wait": 0,
     "autosaveinterval": 1,
     "games": 2,
-    "rounds": 15,
+    "rounds": 20,
     "concurrency": 200,
     "force_concurrency": false,
     "recover": false,
@@ -127,10 +127,6 @@
                 [
                     "Hash",
                     "128"
-                ],
-                [
-                    "Threads",
-                    "1"
                 ]
             ],
             "limit": {
@@ -156,10 +152,6 @@
                 [
                     "Hash",
                     "128"
-                ],
-                [
-                    "Threads",
-                    "1"
                 ]
             ],
             "limit": {
@@ -185,10 +177,6 @@
                 [
                     "Hash",
                     "128"
-                ],
-                [
-                    "Threads",
-                    "1"
                 ]
             ],
             "limit": {
@@ -214,10 +202,6 @@
                 [
                     "Hash",
                     "128"
-                ],
-                [
-                    "Threads",
-                    "1"
                 ]
             ],
             "limit": {
@@ -243,10 +227,6 @@
                 [
                     "Hash",
                     "128"
-                ],
-                [
-                    "Threads",
-                    "1"
                 ]
             ],
             "limit": {
@@ -272,10 +252,6 @@
                 [
                     "Hash",
                     "128"
-                ],
-                [
-                    "Threads",
-                    "1"
                 ]
             ],
             "limit": {
@@ -301,10 +277,6 @@
                 [
                     "Hash",
                     "128"
-                ],
-                [
-                    "Threads",
-                    "1"
                 ]
             ],
             "limit": {
@@ -330,10 +302,6 @@
                 [
                     "Hash",
                     "128"
-                ],
-                [
-                    "Threads",
-                    "1"
                 ]
             ],
             "limit": {
@@ -359,10 +327,6 @@
                 [
                     "Hash",
                     "128"
-                ],
-                [
-                    "Threads",
-                    "1"
                 ]
             ],
             "limit": {
@@ -388,10 +352,6 @@
                 [
                     "Hash",
                     "128"
-                ],
-                [
-                    "Threads",
-                    "1"
                 ]
             ],
             "limit": {
@@ -417,10 +377,6 @@
                 [
                     "Hash",
                     "128"
-                ],
-                [
-                    "Threads",
-                    "1"
                 ]
             ],
             "limit": {
@@ -446,10 +402,6 @@
                 [
                     "Hash",
                     "128"
-                ],
-                [
-                    "Threads",
-                    "1"
                 ]
             ],
             "limit": {
@@ -475,10 +427,6 @@
                 [
                     "Hash",
                     "128"
-                ],
-                [
-                    "Threads",
-                    "1"
                 ]
             ],
             "limit": {
@@ -504,10 +452,6 @@
                 [
                     "Hash",
                     "128"
-                ],
-                [
-                    "Threads",
-                    "1"
                 ]
             ],
             "limit": {
@@ -533,10 +477,6 @@
                 [
                     "Hash",
                     "128"
-                ],
-                [
-                    "Threads",
-                    "1"
                 ]
             ],
             "limit": {
@@ -562,10 +502,6 @@
                 [
                     "Hash",
                     "128"
-                ],
-                [
-                    "Threads",
-                    "1"
                 ]
             ],
             "limit": {
@@ -591,10 +527,6 @@
                 [
                     "Hash",
                     "128"
-                ],
-                [
-                    "Threads",
-                    "1"
                 ]
             ],
             "limit": {
@@ -620,10 +552,6 @@
                 [
                     "Hash",
                     "128"
-                ],
-                [
-                    "Threads",
-                    "1"
                 ]
             ],
             "limit": {
@@ -649,10 +577,6 @@
                 [
                     "Hash",
                     "128"
-                ],
-                [
-                    "Threads",
-                    "1"
                 ]
             ],
             "limit": {
@@ -678,10 +602,6 @@
                 [
                     "Hash",
                     "128"
-                ],
-                [
-                    "Threads",
-                    "1"
                 ]
             ],
             "limit": {
@@ -707,10 +627,6 @@
                 [
                     "Hash",
                     "128"
-                ],
-                [
-                    "Threads",
-                    "1"
                 ]
             ],
             "limit": {
@@ -736,10 +652,6 @@
                 [
                     "Hash",
                     "128"
-                ],
-                [
-                    "Threads",
-                    "1"
                 ]
             ],
             "limit": {
@@ -765,10 +677,6 @@
                 [
                     "Hash",
                     "128"
-                ],
-                [
-                    "Threads",
-                    "1"
                 ]
             ],
             "limit": {
@@ -941,9 +849,9 @@
             "penta_LL": 0
         },
         "hivechess vs aurora": {
-            "wins": 22,
-            "losses": 1,
-            "draws": 7,
+            "wins": 10,
+            "losses": 0,
+            "draws": 1,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
@@ -974,9 +882,9 @@
             "penta_LL": 0
         },
         "hivechess vs tcheran": {
-            "wins": 1,
-            "losses": 22,
-            "draws": 7,
+            "wins": 0,
+            "losses": 5,
+            "draws": 3,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
@@ -1062,9 +970,9 @@
             "penta_LL": 0
         },
         "hivechess vs inanis": {
-            "wins": 16,
-            "losses": 4,
-            "draws": 10,
+            "wins": 4,
+            "losses": 0,
+            "draws": 2,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
@@ -1139,8 +1047,8 @@
             "penta_LL": 0
         },
         "hivechess vs apotheosis": {
-            "wins": 23,
-            "losses": 2,
+            "wins": 4,
+            "losses": 1,
             "draws": 5,
             "penta_WW": 0,
             "penta_WD": 0,
@@ -1458,9 +1366,9 @@
             "penta_LL": 0
         },
         "hivechess vs patricia": {
-            "wins": 1,
-            "losses": 14,
-            "draws": 15,
+            "wins": 2,
+            "losses": 2,
+            "draws": 5,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
@@ -1733,9 +1641,9 @@
             "penta_LL": 0
         },
         "hivechess vs wahoo": {
-            "wins": 13,
-            "losses": 9,
-            "draws": 8,
+            "wins": 5,
+            "losses": 2,
+            "draws": 1,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
@@ -1789,8 +1697,8 @@
         },
         "hivechess vs viridithas": {
             "wins": 0,
-            "losses": 23,
-            "draws": 7,
+            "losses": 6,
+            "draws": 2,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
@@ -1821,9 +1729,9 @@
             "penta_LL": 0
         },
         "hivechess vs tantabus": {
-            "wins": 21,
-            "losses": 1,
-            "draws": 8,
+            "wins": 6,
+            "losses": 0,
+            "draws": 1,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
@@ -1899,8 +1807,8 @@
         },
         "hivechess vs stockfish": {
             "wins": 0,
-            "losses": 20,
-            "draws": 10,
+            "losses": 6,
+            "draws": 3,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
@@ -1953,9 +1861,9 @@
             "penta_LL": 0
         },
         "hivechess vs nalwald": {
-            "wins": 5,
-            "losses": 4,
-            "draws": 21,
+            "wins": 0,
+            "losses": 1,
+            "draws": 6,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
@@ -1997,9 +1905,9 @@
             "penta_LL": 0
         },
         "hivechess vs 4ku": {
-            "wins": 12,
-            "losses": 2,
-            "draws": 16,
+            "wins": 6,
+            "losses": 0,
+            "draws": 4,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
@@ -2019,9 +1927,9 @@
             "penta_LL": 0
         },
         "hivechess vs blackcore": {
-            "wins": 4,
-            "losses": 11,
-            "draws": 15,
+            "wins": 3,
+            "losses": 3,
+            "draws": 3,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
@@ -2052,9 +1960,9 @@
             "penta_LL": 0
         },
         "hivechess vs avalanche": {
-            "wins": 3,
-            "losses": 7,
-            "draws": 20,
+            "wins": 1,
+            "losses": 3,
+            "draws": 4,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
@@ -2151,8 +2059,8 @@
             "penta_LL": 0
         },
         "hivechess vs tofiks": {
-            "wins": 27,
-            "losses": 2,
+            "wins": 7,
+            "losses": 1,
             "draws": 1,
             "penta_WW": 0,
             "penta_WD": 0,
@@ -2195,9 +2103,9 @@
             "penta_LL": 0
         },
         "hivechess vs blackmarlin": {
-            "wins": 1,
-            "losses": 18,
-            "draws": 11,
+            "wins": 0,
+            "losses": 6,
+            "draws": 3,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
@@ -2206,9 +2114,9 @@
             "penta_LL": 0
         },
         "hivechess vs carp": {
-            "wins": 0,
-            "losses": 18,
-            "draws": 12,
+            "wins": 1,
+            "losses": 7,
+            "draws": 2,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
@@ -2305,9 +2213,9 @@
             "penta_LL": 0
         },
         "hivechess vs oxidation": {
-            "wins": 28,
-            "losses": 0,
-            "draws": 2,
+            "wins": 9,
+            "losses": 1,
+            "draws": 0,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
@@ -2338,9 +2246,9 @@
             "penta_LL": 0
         },
         "hivechess vs koivisto": {
-            "wins": 2,
-            "losses": 19,
-            "draws": 9,
+            "wins": 0,
+            "losses": 4,
+            "draws": 5,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
@@ -2492,9 +2400,9 @@
             "penta_LL": 0
         },
         "hivechess vs frozenight": {
-            "wins": 5,
-            "losses": 8,
-            "draws": 17,
+            "wins": 3,
+            "losses": 2,
+            "draws": 4,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
@@ -2624,9 +2532,9 @@
             "penta_LL": 0
         },
         "hivechess vs stockdory": {
-            "wins": 4,
-            "losses": 9,
-            "draws": 17,
+            "wins": 3,
+            "losses": 2,
+            "draws": 3,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
@@ -3120,8 +3028,8 @@
         },
         "hivechess vs lizard": {
             "wins": 0,
-            "losses": 20,
-            "draws": 10,
+            "losses": 7,
+            "draws": 1,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
@@ -3163,9 +3071,9 @@
             "penta_LL": 0
         },
         "hivechess vs akimbo": {
-            "wins": 1,
-            "losses": 15,
-            "draws": 14,
+            "wins": 0,
+            "losses": 3,
+            "draws": 7,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
@@ -3241,8 +3149,8 @@
         },
         "hivechess vs stormphrax": {
             "wins": 0,
-            "losses": 23,
-            "draws": 7,
+            "losses": 6,
+            "draws": 2,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,

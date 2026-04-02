@@ -36,7 +36,7 @@ TC="120+1"
 HASH=128
 THREADS=1
 CONCURRENCY=200
-ROUNDS=15
+ROUNDS=20
 SYZYGY_PATH=""
 
 while getopts "c:r:t:o:h" opt; do

@@ -32,7 +32,7 @@ BOOK="$BOOKS_DIR/ccrl.epd"
 FASTCHESS="$REPO_ROOT/tools/fastchess"
 OUTPUT_PGN="$SCRIPT_DIR/results.pgn"
 
-TC="120+1"
+TC="30+0.3"
 HASH=128
 THREADS=1
 CONCURRENCY=200

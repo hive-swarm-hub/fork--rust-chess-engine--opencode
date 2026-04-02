@@ -60,7 +60,7 @@
     },
     "config_name": "config.json",
     "output": 1,
-    "seed": 7908929064720459812,
+    "seed": 1659954609996838509,
     "variant": 0,
     "type": 1,
     "gauntlet_seeds": 1,
@@ -106,9 +106,9 @@
             ],
             "limit": {
                 "tc": {
-                    "increment": 1000,
+                    "increment": 300,
                     "fixed_time": 0,
-                    "time": 120000,
+                    "time": 30000,
                     "moves": 0,
                     "timemargin": 0
                 },
@@ -131,9 +131,9 @@
             ],
             "limit": {
                 "tc": {
-                    "increment": 1000,
+                    "increment": 300,
                     "fixed_time": 0,
-                    "time": 120000,
+                    "time": 30000,
                     "moves": 0,
                     "timemargin": 0
                 },
@@ -156,9 +156,9 @@
             ],
             "limit": {
                 "tc": {
-                    "increment": 1000,
+                    "increment": 300,
                     "fixed_time": 0,
-                    "time": 120000,
+                    "time": 30000,
                     "moves": 0,
                     "timemargin": 0
                 },
@@ -181,9 +181,9 @@
             ],
             "limit": {
                 "tc": {
-                    "increment": 1000,
+                    "increment": 300,
                     "fixed_time": 0,
-                    "time": 120000,
+                    "time": 30000,
                     "moves": 0,
                     "timemargin": 0
                 },
@@ -206,9 +206,9 @@
             ],
             "limit": {
                 "tc": {
-                    "increment": 1000,
+                    "increment": 300,
                     "fixed_time": 0,
-                    "time": 120000,
+                    "time": 30000,
                     "moves": 0,
                     "timemargin": 0
                 },
@@ -231,9 +231,9 @@
             ],
             "limit": {
                 "tc": {
-                    "increment": 1000,
+                    "increment": 300,
                     "fixed_time": 0,
-                    "time": 120000,
+                    "time": 30000,
                     "moves": 0,
                     "timemargin": 0
                 },
@@ -256,9 +256,9 @@
             ],
             "limit": {
                 "tc": {
-                    "increment": 1000,
+                    "increment": 300,
                     "fixed_time": 0,
-                    "time": 120000,
+                    "time": 30000,
                     "moves": 0,
                     "timemargin": 0
                 },
@@ -281,9 +281,9 @@
             ],
             "limit": {
                 "tc": {
-                    "increment": 1000,
+                    "increment": 300,
                     "fixed_time": 0,
-                    "time": 120000,
+                    "time": 30000,
                     "moves": 0,
                     "timemargin": 0
                 },
@@ -306,9 +306,9 @@
             ],
             "limit": {
                 "tc": {
-                    "increment": 1000,
+                    "increment": 300,
                     "fixed_time": 0,
-                    "time": 120000,
+                    "time": 30000,
                     "moves": 0,
                     "timemargin": 0
                 },
@@ -331,9 +331,9 @@
             ],
             "limit": {
                 "tc": {
-                    "increment": 1000,
+                    "increment": 300,
                     "fixed_time": 0,
-                    "time": 120000,
+                    "time": 30000,
                     "moves": 0,
                     "timemargin": 0
                 },
@@ -356,9 +356,9 @@
             ],
             "limit": {
                 "tc": {
-                    "increment": 1000,
+                    "increment": 300,
                     "fixed_time": 0,
-                    "time": 120000,
+                    "time": 30000,
                     "moves": 0,
                     "timemargin": 0
                 },
@@ -381,9 +381,9 @@
             ],
             "limit": {
                 "tc": {
-                    "increment": 1000,
+                    "increment": 300,
                     "fixed_time": 0,
-                    "time": 120000,
+                    "time": 30000,
                     "moves": 0,
                     "timemargin": 0
                 },
@@ -406,9 +406,9 @@
             ],
             "limit": {
                 "tc": {
-                    "increment": 1000,
+                    "increment": 300,
                     "fixed_time": 0,
-                    "time": 120000,
+                    "time": 30000,
                     "moves": 0,
                     "timemargin": 0
                 },
@@ -431,9 +431,9 @@
             ],
             "limit": {
                 "tc": {
-                    "increment": 1000,
+                    "increment": 300,
                     "fixed_time": 0,
-                    "time": 120000,
+                    "time": 30000,
                     "moves": 0,
                     "timemargin": 0
                 },
@@ -456,9 +456,9 @@
             ],
             "limit": {
                 "tc": {
-                    "increment": 1000,
+                    "increment": 300,
                     "fixed_time": 0,
-                    "time": 120000,
+                    "time": 30000,
                     "moves": 0,
                     "timemargin": 0
                 },
@@ -481,9 +481,9 @@
             ],
             "limit": {
                 "tc": {
-                    "increment": 1000,
+                    "increment": 300,
                     "fixed_time": 0,
-                    "time": 120000,
+                    "time": 30000,
                     "moves": 0,
                     "timemargin": 0
                 },
@@ -506,9 +506,9 @@
             ],
             "limit": {
                 "tc": {
-                    "increment": 1000,
+                    "increment": 300,
                     "fixed_time": 0,
-                    "time": 120000,
+                    "time": 30000,
                     "moves": 0,
                     "timemargin": 0
                 },
@@ -531,9 +531,9 @@
             ],
             "limit": {
                 "tc": {
-                    "increment": 1000,
+                    "increment": 300,
                     "fixed_time": 0,
-                    "time": 120000,
+                    "time": 30000,
                     "moves": 0,
                     "timemargin": 0
                 },
@@ -556,9 +556,9 @@
             ],
             "limit": {
                 "tc": {
-                    "increment": 1000,
+                    "increment": 300,
                     "fixed_time": 0,
-                    "time": 120000,
+                    "time": 30000,
                     "moves": 0,
                     "timemargin": 0
                 },
@@ -581,9 +581,9 @@
             ],
             "limit": {
                 "tc": {
-                    "increment": 1000,
+                    "increment": 300,
                     "fixed_time": 0,
-                    "time": 120000,
+                    "time": 30000,
                     "moves": 0,
                     "timemargin": 0
                 },
@@ -606,9 +606,9 @@
             ],
             "limit": {
                 "tc": {
-                    "increment": 1000,
+                    "increment": 300,
                     "fixed_time": 0,
-                    "time": 120000,
+                    "time": 30000,
                     "moves": 0,
                     "timemargin": 0
                 },
@@ -631,9 +631,9 @@
             ],
             "limit": {
                 "tc": {
-                    "increment": 1000,
+                    "increment": 300,
                     "fixed_time": 0,
-                    "time": 120000,
+                    "time": 30000,
                     "moves": 0,
                     "timemargin": 0
                 },
@@ -656,9 +656,9 @@
             ],
             "limit": {
                 "tc": {
-                    "increment": 1000,
+                    "increment": 300,
                     "fixed_time": 0,
-                    "time": 120000,
+                    "time": 30000,
                     "moves": 0,
                     "timemargin": 0
                 },
@@ -681,9 +681,9 @@
             ],
             "limit": {
                 "tc": {
-                    "increment": 1000,
+                    "increment": 300,
                     "fixed_time": 0,
-                    "time": 120000,
+                    "time": 30000,
                     "moves": 0,
                     "timemargin": 0
                 },
@@ -849,9 +849,9 @@
             "penta_LL": 0
         },
         "hivechess vs aurora": {
-            "wins": 10,
-            "losses": 0,
-            "draws": 1,
+            "wins": 7,
+            "losses": 1,
+            "draws": 2,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
@@ -883,8 +883,8 @@
         },
         "hivechess vs tcheran": {
             "wins": 0,
-            "losses": 5,
-            "draws": 3,
+            "losses": 7,
+            "draws": 1,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
@@ -970,9 +970,9 @@
             "penta_LL": 0
         },
         "hivechess vs inanis": {
-            "wins": 4,
-            "losses": 0,
-            "draws": 2,
+            "wins": 5,
+            "losses": 2,
+            "draws": 0,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
@@ -1047,9 +1047,9 @@
             "penta_LL": 0
         },
         "hivechess vs apotheosis": {
-            "wins": 4,
-            "losses": 1,
-            "draws": 5,
+            "wins": 6,
+            "losses": 0,
+            "draws": 3,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
@@ -1366,9 +1366,9 @@
             "penta_LL": 0
         },
         "hivechess vs patricia": {
-            "wins": 2,
-            "losses": 2,
-            "draws": 5,
+            "wins": 0,
+            "losses": 5,
+            "draws": 3,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
@@ -1642,7 +1642,7 @@
         },
         "hivechess vs wahoo": {
             "wins": 5,
-            "losses": 2,
+            "losses": 1,
             "draws": 1,
             "penta_WW": 0,
             "penta_WD": 0,
@@ -1729,7 +1729,7 @@
             "penta_LL": 0
         },
         "hivechess vs tantabus": {
-            "wins": 6,
+            "wins": 8,
             "losses": 0,
             "draws": 1,
             "penta_WW": 0,
@@ -1807,8 +1807,8 @@
         },
         "hivechess vs stockfish": {
             "wins": 0,
-            "losses": 6,
-            "draws": 3,
+            "losses": 7,
+            "draws": 1,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
@@ -1861,9 +1861,9 @@
             "penta_LL": 0
         },
         "hivechess vs nalwald": {
-            "wins": 0,
-            "losses": 1,
-            "draws": 6,
+            "wins": 2,
+            "losses": 3,
+            "draws": 2,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
@@ -1905,9 +1905,9 @@
             "penta_LL": 0
         },
         "hivechess vs 4ku": {
-            "wins": 6,
+            "wins": 5,
             "losses": 0,
-            "draws": 4,
+            "draws": 2,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
@@ -1927,9 +1927,9 @@
             "penta_LL": 0
         },
         "hivechess vs blackcore": {
-            "wins": 3,
-            "losses": 3,
-            "draws": 3,
+            "wins": 1,
+            "losses": 4,
+            "draws": 5,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
@@ -1960,9 +1960,9 @@
             "penta_LL": 0
         },
         "hivechess vs avalanche": {
-            "wins": 1,
-            "losses": 3,
-            "draws": 4,
+            "wins": 2,
+            "losses": 5,
+            "draws": 3,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
@@ -2059,9 +2059,9 @@
             "penta_LL": 0
         },
         "hivechess vs tofiks": {
-            "wins": 7,
-            "losses": 1,
-            "draws": 1,
+            "wins": 9,
+            "losses": 0,
+            "draws": 0,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
@@ -2104,8 +2104,8 @@
         },
         "hivechess vs blackmarlin": {
             "wins": 0,
-            "losses": 6,
-            "draws": 3,
+            "losses": 8,
+            "draws": 1,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
@@ -2115,8 +2115,8 @@
         },
         "hivechess vs carp": {
             "wins": 1,
-            "losses": 7,
-            "draws": 2,
+            "losses": 8,
+            "draws": 1,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
@@ -2214,7 +2214,7 @@
         },
         "hivechess vs oxidation": {
             "wins": 9,
-            "losses": 1,
+            "losses": 0,
             "draws": 0,
             "penta_WW": 0,
             "penta_WD": 0,
@@ -2247,8 +2247,8 @@
         },
         "hivechess vs koivisto": {
             "wins": 0,
-            "losses": 4,
-            "draws": 5,
+            "losses": 6,
+            "draws": 1,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
@@ -2400,9 +2400,9 @@
             "penta_LL": 0
         },
         "hivechess vs frozenight": {
-            "wins": 3,
-            "losses": 2,
-            "draws": 4,
+            "wins": 2,
+            "losses": 3,
+            "draws": 2,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
@@ -2532,9 +2532,9 @@
             "penta_LL": 0
         },
         "hivechess vs stockdory": {
-            "wins": 3,
+            "wins": 1,
             "losses": 2,
-            "draws": 3,
+            "draws": 4,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
@@ -3028,7 +3028,7 @@
         },
         "hivechess vs lizard": {
             "wins": 0,
-            "losses": 7,
+            "losses": 6,
             "draws": 1,
             "penta_WW": 0,
             "penta_WD": 0,
@@ -3071,9 +3071,9 @@
             "penta_LL": 0
         },
         "hivechess vs akimbo": {
-            "wins": 0,
-            "losses": 3,
-            "draws": 7,
+            "wins": 1,
+            "losses": 5,
+            "draws": 2,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,
@@ -3149,8 +3149,8 @@
         },
         "hivechess vs stormphrax": {
             "wins": 0,
-            "losses": 6,
-            "draws": 2,
+            "losses": 5,
+            "draws": 3,
             "penta_WW": 0,
             "penta_WD": 0,
             "penta_WL": 0,

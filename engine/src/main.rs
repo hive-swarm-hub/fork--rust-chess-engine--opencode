@@ -15,8 +15,7 @@ fn main() {
     reckless_nnue::load_parameters();
     let stdin = io::stdin();
     let mut hash_mb: usize = 64;
-    let mut num_threads: usize = 1;
-    let mut engine = RustAlphaBetaEngine::new(64, hash_mb, num_threads);
+    let mut engine = RustAlphaBetaEngine::new(64, hash_mb);
     let mut root_fen = String::from("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
     let mut move_history: Vec<String> = Vec::new();
     let mut current_board = Board::default();
@@ -36,7 +35,6 @@ fn main() {
                 send("id name HiveChess 0.3");
                 send("id author HiveAgent");
                 send("option name Hash type spin default 64 min 1 max 65536");
-                send("option name Threads type spin default 1 min 1 max 512");
                 send("uciok");
             }
             "isready" => send("readyok"),
@@ -56,13 +54,7 @@ fn main() {
                         "hash" => {
                             if let Some(mb) = value {
                                 hash_mb = mb.max(1);
-                                engine = RustAlphaBetaEngine::new(64, hash_mb, num_threads);
-                            }
-                        }
-                        "threads" => {
-                            if let Some(t) = value {
-                                num_threads = t.max(1);
-                                engine = RustAlphaBetaEngine::new(64, hash_mb, num_threads);
+                                engine = RustAlphaBetaEngine::new(64, hash_mb);
                             }
                         }
                         _ => {}
@@ -70,7 +62,7 @@ fn main() {
                 }
             }
             "ucinewgame" => {
-                engine = RustAlphaBetaEngine::new(64, hash_mb, num_threads);
+                engine = RustAlphaBetaEngine::new(64, hash_mb);
             }
             "position" => {
                 let mut idx = 1;
@@ -563,7 +555,7 @@ struct RustAlphaBetaEngine {
 }
 
 impl RustAlphaBetaEngine {
-    fn new(depth: i32, hash_mb: usize, threads: usize) -> Self {
+    fn new(depth: i32, hash_mb: usize) -> Self {
         let tt_bytes = hash_mb * 1024 * 1024;
         let entry_size = std::mem::size_of::<TTEntry>().max(1);
         let raw = (tt_bytes / entry_size).max(1);
@@ -572,7 +564,7 @@ impl RustAlphaBetaEngine {
         let tt_mask = tt_size - 1;
         Self {
             depth,
-            threads: threads.max(1),
+            threads: 1,
             nodes: 0,
             tt: vec![TTEntry::default(); tt_size],
             tt_mask,

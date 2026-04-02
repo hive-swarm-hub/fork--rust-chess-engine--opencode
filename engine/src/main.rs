@@ -35,6 +35,7 @@ fn main() {
                 send("id name HiveChess 0.3");
                 send("id author HiveAgent");
                 send("option name Hash type spin default 64 min 1 max 65536");
+                send("option name Threads type spin default 1 min 1 max 512");
                 send("uciok");
             }
             "isready" => send("readyok"),
@@ -57,6 +58,7 @@ fn main() {
                                 engine = RustAlphaBetaEngine::new(64, hash_mb);
                             }
                         }
+                        "threads" => {} // accepted, not used
                         _ => {}
                     }
                 }

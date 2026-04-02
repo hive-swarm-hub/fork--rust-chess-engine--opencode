@@ -566,8 +566,9 @@ impl RustAlphaBetaEngine {
     fn new(depth: i32, hash_mb: usize, threads: usize) -> Self {
         let tt_bytes = hash_mb * 1024 * 1024;
         let entry_size = std::mem::size_of::<TTEntry>().max(1);
-        let tt_size = (tt_bytes / entry_size).next_power_of_two() / 2;
-        let tt_size = tt_size.max(1);
+        let raw = (tt_bytes / entry_size).max(1);
+        // Largest power of two <= raw, so we never exceed the requested MB
+        let tt_size = 1usize << (usize::BITS - raw.leading_zeros() - 1) as usize;
         let tt_mask = tt_size - 1;
         Self {
             depth,
